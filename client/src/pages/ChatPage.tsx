@@ -117,11 +117,6 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // 当消息列表更新时自动滚动到底部
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
   // 格式化日期+时间（类似Telegram）
   const formatDateTime = (timestamp: string) => {
     const date = new Date(timestamp);
@@ -175,6 +170,8 @@ export default function ChatPage() {
         chatId: msg.chatId || selectedContact.id // 使用数据库中的chatId
       }));
       setMessages(loadedMessages);
+      // 加载历史消息后滚动到底部
+      setTimeout(scrollToBottom, 100);
     } else {
       // 其他聊天室清空历史记录（暂无持久化）
       setMessages([]);
@@ -230,6 +227,8 @@ export default function ChatPage() {
             return prev;
           }
           console.log('添加新消息到列表:', newMessage);
+          // 收到新消息后滚动到底部
+          setTimeout(scrollToBottom, 100);
           return [...prev, newMessage];
         });
       }
