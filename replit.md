@@ -87,7 +87,14 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (2025-01-26)
 
-1. **Reports System - 4-Dimensional Analysis Table (Latest)**:
+1. **Chat UI/UX Improvements (Latest)**:
+   - **Fixed Input Box Position**: Changed grid height to `h-[calc(100vh-200px)]` for viewport-based sizing, input box now fixed at bottom regardless of message count
+   - **Message Routing Fix**: Added `chatId` field to Message interface, messages now filtered by conversation
+   - **Current Limitation**: Only team chat (销售团队, id='1') fully functional, other conversations show "此对话功能正在开发中" placeholder
+   - **Preserved Chat History**: Removed `setMessages([])` call when starting private chats to preserve team chat history across contact switches
+   - **Layout Architecture**: Both Cards use `flex flex-col`, ScrollAreas use `flex-1` for auto-sizing, responsive across breakpoints
+
+2. **Reports System - 4-Dimensional Analysis Table**:
    - **User Requirement**: Expanded from 2 to 4 dimensions based on explicit user requirement
    - **Backend API**: GET /api/reports/summary-tables endpoint
      - Returns 4 summary datasets: channelSummary, dateSummary, teamSummary, agentSummary
