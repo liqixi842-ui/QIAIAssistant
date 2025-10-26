@@ -1305,6 +1305,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // WebSocket 团队群聊服务器
   // ============================================
 
+  // 保护/ws路径不被静态文件服务拦截
+  app.get('/ws', (req, res) => {
+    // 如果请求头没有Upgrade字段，说明不是WebSocket升级请求
+    if (!req.headers.upgrade || req.headers.upgrade.toLowerCase() !== 'websocket') {
+      return res.status(426).send('Upgrade Required - This endpoint is for WebSocket connections only');
+    }
+    // WebSocket升级请求会被ws库处理，这里不需要做任何事
+    // 这个路由只是防止静态文件服务器返回index.html
+  });
+
   const httpServer = createServer(app);
 
   // 创建WebSocket服务器在/ws路径，避免与Vite HMR冲突
