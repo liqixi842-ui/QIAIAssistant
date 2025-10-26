@@ -31,15 +31,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // 临时部署下载端点（部署完成后删除）
   // ============================================
   
-  app.get("/deploy/routes-fixed", (req, res) => {
+  app.get("/deploy/routes-fixed", async (req, res) => {
     const token = req.query.token;
     if (token !== "deploy2025") {
       return res.status(403).send("Forbidden");
     }
     
-    const fs = require('fs');
-    const path = require('path');
-    const filePath = path.resolve(__dirname, 'routes.ts');
+    const fs = await import('fs');
+    const path = await import('path');
+    const filePath = path.resolve(import.meta.dirname, 'routes.ts');
     
     res.setHeader('Content-Type', 'text/plain');
     res.setHeader('Content-Disposition', 'attachment; filename="routes.ts"');
