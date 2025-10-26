@@ -87,7 +87,23 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (2025-01-26)
 
-1. **🔥 Critical Chat Room Isolation Fix - Complete End-to-End Implementation (Latest)**:
+1. **🚨 Session Cookie Issue - Pending Fix (Latest)**:
+   - **Problem**: Session cookie not being sent to browser despite `app.set('trust proxy', 1)` configured
+   - **Symptom**: GET /api/chat/messages returns 401 "未登录", chat history not loading after page navigation
+   - **Root Cause Identified**: Login endpoint missing `req.session.save()` callback to explicitly save session
+   - **Nginx**: Correctly configured with X-Forwarded-Proto header
+   - **Trust Proxy**: Confirmed compiled into dist/index.js (line 2397)
+   - **Cookie Check**: Browser shows NO connect.sid cookie
+   - **Solution Ready**: Add req.session.save() wrapper around login response (lines 157-170 in server/routes.ts)
+   - **Status**: Code fix prepared, deployment failed due to wget issues, postponed to tomorrow
+   - **Next Steps**: 
+     1. Use sed command to add session.save() wrapper in server/routes.ts
+     2. Rebuild and restart PM2
+     3. Clear browser cookies and re-login
+     4. Verify connect.sid cookie appears
+     5. Test chat history persistence
+
+2. **🔥 Critical Chat Room Isolation Fix - Complete End-to-End Implementation**:
    - **Root Cause Fixed**: Completely eliminated message cross-contamination between chat rooms
    - **Database Migration**: Added `chat_id VARCHAR NOT NULL DEFAULT '1'` column to chat_messages table
    - **Schema Layer**: Added chatId field to chatMessages table in shared/schema.ts
