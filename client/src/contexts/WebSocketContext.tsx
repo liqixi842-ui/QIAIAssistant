@@ -84,13 +84,8 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
       };
 
       socket.onclose = () => {
-        console.log('WebSocket已断开，5秒后重连...');
+        console.log('WebSocket已断开，不自动重连');
         setIsConnected(false);
-        
-        // 5秒后自动重连
-        reconnectTimeoutRef.current = setTimeout(() => {
-          connect();
-        }, 5000);
       };
 
       socket.onerror = (error) => {
