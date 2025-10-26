@@ -158,19 +158,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/auth/login", async (req, res) => {
     try {
       const { username, password } = req.body;
+      
+      console.log('🔐 登录请求:', {
+        username,
+        passwordLength: password?.length,
+        hasUsername: !!username,
+        hasPassword: !!password
+      });
 
       if (!username || !password) {
+        console.log('❌ 缺少用户名或密码');
         return res.status(400).json({ error: "请输入用户名和密码" });
       }
 
       // 查找用户
       const user = await storage.getUserByUsername(username);
       if (!user) {
+        console.log('❌ 用户不存在:', username);
         return res.status(401).json({ error: "用户名或密码错误" });
       }
+      
+      console.log('✅ 找到用户:', {
+        username: user.username,
+        dbPassword: user.password,
+        inputPassword: password,
+        match: user.password === password
+      });
 
       // 验证密码（注意：实际生产环境应使用bcrypt验证）
       if (user.password !== password) {
+        console.log('❌ 密码不匹配');
         return res.status(401).json({ error: "用户名或密码错误" });
       }
 
