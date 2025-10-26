@@ -113,9 +113,11 @@ export default function ChatPage() {
   // 用于自动滚动到底部
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const isUserAtBottomRef = useRef(true); // 追踪用户是否在底部
 
-  // 自动滚动到底部
+  // 自动滚动到底部（仅当用户在底部时）
   const scrollToBottom = () => {
+    if (!isUserAtBottomRef.current) return; // 用户不在底部时不滚动
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     setShowScrollButton(false);
   };
@@ -125,6 +127,9 @@ export default function ChatPage() {
     const target = e.target as HTMLDivElement;
     const { scrollTop, scrollHeight, clientHeight } = target;
     const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+    
+    // 更新用户是否在底部的状态
+    isUserAtBottomRef.current = isNearBottom;
     setShowScrollButton(!isNearBottom);
   };
 
@@ -175,6 +180,8 @@ export default function ChatPage() {
       return response.json();
     },
     enabled: !!currentUser && selectedContact.id === '1', // 只有团队群聊（id=1）从数据库加载
+    refetchOnWindowFocus: false, // 禁用窗口聚焦时自动重新获取
+    staleTime: 60000, // 数据保持新鲜1分钟
   });
 
   // 初始化历史消息
@@ -635,7 +642,10 @@ export default function ChatPage() {
               <Button
                 size="icon"
                 className="absolute bottom-4 right-4 rounded-full shadow-lg z-10"
-                onClick={scrollToBottom}
+                onClick={() => {
+                  isUserAtBottomRef.current = true; // 标记用户回到底部
+                  scrollToBottom();
+                }}
                 data-testid="button-scroll-to-bottom"
               >
                 <ArrowDown className="h-4 w-4" />
