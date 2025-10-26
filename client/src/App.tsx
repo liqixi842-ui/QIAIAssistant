@@ -41,40 +41,38 @@ function AuthenticatedLayout() {
   const currentUserName = currentUser.nickname || currentUser.name || "用户";
 
   return (
-    <WebSocketProvider>
-      <SidebarProvider style={style as React.CSSProperties}>
-        <div className="flex h-screen w-full">
-          <AppSidebar userName={currentUserName} userRole={currentUserRole} />
-          <div className="flex flex-col flex-1">
-            <header className="flex items-center justify-between p-4 border-b">
-              <SidebarTrigger data-testid="button-sidebar-toggle" />
-            </header>
-            <main className="flex-1 overflow-auto p-6">
-              <Switch>
-                <Route path="/dashboard" component={Dashboard} />
-                <Route path="/customers" component={CustomersPage} />
-                <Route path="/scripts">
-                  {() => <ScriptsPage userRole={currentUserRole} />}
-                </Route>
-                <Route path="/tasks" component={TasksPage} />
-                <Route path="/kanban" component={KanbanPage} />
-                <Route path="/reports" component={ReportsPage} />
-                <Route path="/chat" component={ChatPage} />
-                <Route path="/team">
-                  {() => <TeamManagement userRole={currentUserRole} userName={currentUserName} />}
-                </Route>
-                <Route path="/feedback">
-                  {() => <FeedbackPage userRole={currentUserRole} />}
-                </Route>
-                <Route path="/accounts" component={AccountsPage} />
-                <Route path="/ai-chat" component={AIChatPage} />
-                <Route component={NotFound} />
-              </Switch>
-            </main>
-          </div>
+    <SidebarProvider style={style as React.CSSProperties}>
+      <div className="flex h-screen w-full">
+        <AppSidebar userName={currentUserName} userRole={currentUserRole} />
+        <div className="flex flex-col flex-1">
+          <header className="flex items-center justify-between p-4 border-b">
+            <SidebarTrigger data-testid="button-sidebar-toggle" />
+          </header>
+          <main className="flex-1 overflow-auto p-6">
+            <Switch>
+              <Route path="/dashboard" component={Dashboard} />
+              <Route path="/customers" component={CustomersPage} />
+              <Route path="/scripts">
+                {() => <ScriptsPage userRole={currentUserRole} />}
+              </Route>
+              <Route path="/tasks" component={TasksPage} />
+              <Route path="/kanban" component={KanbanPage} />
+              <Route path="/reports" component={ReportsPage} />
+              <Route path="/chat" component={ChatPage} />
+              <Route path="/team">
+                {() => <TeamManagement userRole={currentUserRole} userName={currentUserName} />}
+              </Route>
+              <Route path="/feedback">
+                {() => <FeedbackPage userRole={currentUserRole} />}
+              </Route>
+              <Route path="/accounts" component={AccountsPage} />
+              <Route path="/ai-chat" component={AIChatPage} />
+              <Route component={NotFound} />
+            </Switch>
+          </main>
         </div>
-      </SidebarProvider>
-    </WebSocketProvider>
+      </div>
+    </SidebarProvider>
   );
 }
 
@@ -96,8 +94,10 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <Router />
-        <Toaster />
+        <WebSocketProvider>
+          <Router />
+          <Toaster />
+        </WebSocketProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );
