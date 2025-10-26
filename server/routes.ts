@@ -28,6 +28,25 @@ import { aggregateByDimension, type GroupByDimension } from "./services/aggregat
 export async function registerRoutes(app: Express): Promise<Server> {
   
   // ============================================
+  // 临时部署下载端点（部署完成后删除）
+  // ============================================
+  
+  app.get("/deploy/routes-fixed", (req, res) => {
+    const token = req.query.token;
+    if (token !== "deploy2025") {
+      return res.status(403).send("Forbidden");
+    }
+    
+    const fs = require('fs');
+    const path = require('path');
+    const filePath = path.resolve(__dirname, 'routes.ts');
+    
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Content-Disposition', 'attachment; filename="routes.ts"');
+    res.sendFile(filePath);
+  });
+
+  // ============================================
   // 认证 API 路由
   // ============================================
 
