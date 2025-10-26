@@ -103,6 +103,7 @@ export type Task = typeof tasks.$inferSelect;
 
 export const chatMessages = pgTable("chat_messages", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  chatId: varchar("chat_id").notNull(), // 聊天室ID（用于隔离不同对话）
   senderId: varchar("sender_id").notNull(), // 发送者用户ID
   senderName: text("sender_name").notNull(), // 发送者昵称
   content: text("content").notNull(), // 消息内容

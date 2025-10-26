@@ -35,6 +35,7 @@ export interface IStorage {
   // Chat message methods
   createChatMessage(message: InsertChatMessage): Promise<ChatMessage>;
   getAllChatMessages(limit?: number): Promise<ChatMessage[]>;
+  getChatMessagesByChatId(chatId: string, limit?: number): Promise<ChatMessage[]>;
 }
 
 export class PostgresStorage implements IStorage {
@@ -268,6 +269,14 @@ export class PostgresStorage implements IStorage {
   async getAllChatMessages(limit: number = 100): Promise<ChatMessage[]> {
     return await db.select()
       .from(chatMessages)
+      .orderBy(desc(chatMessages.timestamp))
+      .limit(limit);
+  }
+  
+  async getChatMessagesByChatId(chatId: string, limit: number = 100): Promise<ChatMessage[]> {
+    return await db.select()
+      .from(chatMessages)
+      .where(eq(chatMessages.chatId, chatId))
       .orderBy(desc(chatMessages.timestamp))
       .limit(limit);
   }

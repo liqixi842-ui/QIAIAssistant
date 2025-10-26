@@ -109,15 +109,21 @@ export default function ChatPage() {
   const currentUserStr = localStorage.getItem('currentUser');
   const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
 
-  // 加载历史消息
+  // 加载历史消息 - 根据选中的聊天室ID查询
   const { data: historyData } = useQuery<{ success: boolean; data: ChatMessage[] }>({
-    queryKey: ['/api/chat/messages'],
-    enabled: !!currentUser,
+    queryKey: ['/api/chat/messages', selectedContact.id],
+    queryFn: async () => {
+      const response = await fetch(`/api/chat/messages?chatId=${selectedContact.id}`);
+      if (!response.ok) throw new Error('Failed to fetch messages');
+      return response.json();
+    },
+    enabled: !!currentUser && selectedContact.id === '1', // 只有团队群聊（id=1）从数据库加载
   });
 
-  // 初始化历史消息（当前所有历史消息都是团队群聊的）
+  // 初始化历史消息
   useEffect(() => {
-    if (historyData?.success && historyData.data && currentUser) {
+    // 只有当前选中团队群聊（id=1）且有历史数据时才应用
+    if (selectedContact.id === '1' && historyData?.success && historyData.data && currentUser) {
       const loadedMessages: Message[] = historyData.data.map((msg) => ({
         id: msg.id,
         sender: msg.senderName,
@@ -127,11 +133,14 @@ export default function ChatPage() {
           minute: '2-digit' 
         }),
         isMine: msg.senderId === currentUser.id,
-        chatId: '1' // 默认为团队群聊（id=1）
+        chatId: msg.chatId || selectedContact.id // 使用数据库中的chatId
       }));
       setMessages(loadedMessages);
+    } else {
+      // 其他聊天室清空历史记录（暂无持久化）
+      setMessages([]);
     }
-  }, [historyData, currentUser]);
+  }, [historyData, currentUser, selectedContact.id]);
 
   // 监听WebSocket消息
   useEffect(() => {
@@ -152,7 +161,9 @@ export default function ChatPage() {
     }
 
     if (lastMessage.type === 'chat' && currentUser) {
-      // 接收新消息 - 添加去重逻辑
+      // 接收新消息 - 添加去重逻辑，并使用服务器返回的chatId
+      const messageChatId = lastMessage.chatId || '1'; // 默认为团队群聊
+      
       const newMessage: Message = {
         id: lastMessage.messageId,
         sender: lastMessage.sender,
@@ -162,15 +173,18 @@ export default function ChatPage() {
           minute: '2-digit' 
         }),
         isMine: lastMessage.senderId === currentUser.id,
-        chatId: '1' // 当前所有消息都属于团队群聊（id=1）
+        chatId: messageChatId
       };
 
-      // 去重：检查消息ID是否已存在
-      setMessages(prev => {
-        const exists = prev.some(msg => msg.id === newMessage.id);
-        if (exists) return prev;
-        return [...prev, newMessage];
-      });
+      // 只在消息属于当前选中的聊天时才添加到列表
+      if (messageChatId === selectedContact.id) {
+        // 去重：检查消息ID是否已存在
+        setMessages(prev => {
+          const exists = prev.some(msg => msg.id === newMessage.id);
+          if (exists) return prev;
+          return [...prev, newMessage];
+        });
+      }
     }
   }, [lastMessage]);
 
@@ -188,11 +202,22 @@ export default function ChatPage() {
 
   const handleSend = () => {
     if (message.trim() && isConnected) {
+      // 只允许在团队群聊（id=1）发送消息，其他聊天室提示功能开发中
+      if (selectedContact.id !== '1') {
+        toast({
+          title: "提示",
+          description: "此对话功能正在开发中，请使用销售团队群聊",
+          variant: "default"
+        });
+        return;
+      }
+
       const messageId = Date.now().toString();
       
-      // 通过WebSocket发送消息（服务器会广播给所有人包括自己）
+      // 通过WebSocket发送消息，包含chatId（服务器会广播给所有人）
       sendMessage({
         type: 'chat',
+        chatId: selectedContact.id,
         messageId,
         content: message
       });

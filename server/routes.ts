@@ -1277,8 +1277,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     try {
+      const chatId = req.query.chatId as string;
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
-      const messages = await storage.getAllChatMessages(limit);
+      
+      let messages;
+      if (chatId) {
+        // 按聊天室ID查询
+        messages = await storage.getChatMessagesByChatId(chatId, limit);
+      } else {
+        // 查询所有消息（向后兼容）
+        messages = await storage.getAllChatMessages(limit);
+      }
+      
       // 反转顺序，最新的在最后
       res.json({ success: true, data: messages.reverse() });
     } catch (error: any) {
@@ -1344,10 +1354,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
 
           const timestamp = new Date().toISOString();
+          const chatId = message.chatId || '1'; // 默认聊天室ID为'1'（销售团队）
 
-          // 保存消息到数据库
+          // 保存消息到数据库（包含chatId）
           try {
             await storage.createChatMessage({
+              chatId,
               senderId: sender.userId,
               senderName: sender.nickname,
               content: message.content,
@@ -1356,9 +1368,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.error('保存聊天消息失败:', error);
           }
 
-          // 广播消息给所有客户端（包括发送者）
+          // 广播消息给所有客户端（包括发送者，并包含chatId用于前端过滤）
           broadcastToAll({
             type: 'chat',
+            chatId,
             messageId: message.messageId,
             sender: sender.nickname,
             senderId: sender.userId,
@@ -1366,7 +1379,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             timestamp
           });
 
-          console.log(`消息从 ${sender.nickname}: ${message.content}`);
+          console.log(`消息从 ${sender.nickname} 到聊天室 ${chatId}: ${message.content}`);
         }
       } catch (error) {
         console.error('WebSocket消息处理错误:', error);
