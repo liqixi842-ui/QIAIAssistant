@@ -10,6 +10,9 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
+// 信任反向代理（nginx），允许在HTTPS代理后正确处理secure cookie
+app.set('trust proxy', 1);
+
 // PostgreSQL Session Store
 const PgSession = ConnectPgSimple(session);
 const pgPool = new pg.Pool({
@@ -29,6 +32,7 @@ app.use(session({
   cookie: {
     secure: process.env.NODE_ENV === 'production', // HTTPS only in production
     httpOnly: true,
+    sameSite: 'lax', // 防止CSRF攻击
     maxAge: 1000 * 60 * 60 * 24 * 7 // 7 days
   }
 }));

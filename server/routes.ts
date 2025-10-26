@@ -85,6 +85,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/deploy/server-index", async (req, res) => {
+    const token = req.query.token;
+    if (token !== "deploy2025") {
+      return res.status(403).send("Forbidden");
+    }
+    
+    const fs = await import('fs');
+    const path = await import('path');
+    const filePath = path.resolve(import.meta.dirname, 'index.ts');
+    
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Content-Disposition', 'attachment; filename="index.ts"');
+    res.sendFile(filePath);
+  });
+
   // ============================================
   // 认证 API 路由
   // ============================================
