@@ -184,24 +184,32 @@ export default function ChatPage() {
     staleTime: 60000, // 数据保持新鲜1分钟
   });
 
+  // 用于跟踪是否已经加载过历史消息
+  const hasLoadedHistoryRef = useRef<{ [chatId: string]: boolean }>({});
+
   // 初始化历史消息
   useEffect(() => {
     // 只有当前选中团队群聊（id=1）且有历史数据时才应用
     if (selectedContact.id === '1' && historyData?.success && historyData.data && currentUser) {
-      const loadedMessages: Message[] = historyData.data.map((msg) => ({
-        id: msg.id,
-        sender: msg.senderName,
-        content: msg.content,
-        time: formatDateTime(msg.timestamp),
-        isMine: msg.senderId === currentUser.id,
-        chatId: msg.chatId || selectedContact.id // 使用数据库中的chatId
-      }));
-      setMessages(loadedMessages);
-      // 加载历史消息后滚动到底部
-      setTimeout(scrollToBottom, 100);
-    } else {
-      // 其他聊天室清空历史记录（暂无持久化）
+      // 只在第一次加载或切换聊天室时设置历史消息，避免覆盖新消息
+      if (!hasLoadedHistoryRef.current[selectedContact.id]) {
+        const loadedMessages: Message[] = historyData.data.map((msg) => ({
+          id: msg.id,
+          sender: msg.senderName,
+          content: msg.content,
+          time: formatDateTime(msg.timestamp),
+          isMine: msg.senderId === currentUser.id,
+          chatId: msg.chatId || selectedContact.id // 使用数据库中的chatId
+        }));
+        setMessages(loadedMessages);
+        hasLoadedHistoryRef.current[selectedContact.id] = true;
+        // 加载历史消息后滚动到底部
+        setTimeout(scrollToBottom, 100);
+      }
+    } else if (selectedContact.id !== '1') {
+      // 切换到其他聊天室时清空历史记录（暂无持久化）
       setMessages([]);
+      hasLoadedHistoryRef.current[selectedContact.id] = false;
     }
   }, [historyData, currentUser, selectedContact.id]);
 
