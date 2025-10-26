@@ -1,6 +1,6 @@
-import { type User, type InsertUser, type Customer, type InsertCustomer, type Task, type InsertTask, users, customers, tasks } from "@shared/schema";
+import { type User, type InsertUser, type Customer, type InsertCustomer, type Task, type InsertTask, type ChatMessage, type InsertChatMessage, users, customers, tasks, chatMessages } from "@shared/schema";
 import { db } from "./db";
-import { eq, inArray, or, sql } from "drizzle-orm";
+import { eq, inArray, or, sql, desc } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -31,6 +31,10 @@ export interface IStorage {
     dateStart?: string;
     dateEnd?: string;
   }): Promise<Customer[]>;
+  
+  // Chat message methods
+  createChatMessage(message: InsertChatMessage): Promise<ChatMessage>;
+  getAllChatMessages(limit?: number): Promise<ChatMessage[]>;
 }
 
 export class PostgresStorage implements IStorage {
@@ -254,6 +258,18 @@ export class PostgresStorage implements IStorage {
     }
 
     return await query;
+  }
+  
+  async createChatMessage(insertMessage: InsertChatMessage): Promise<ChatMessage> {
+    const result = await db.insert(chatMessages).values(insertMessage).returning();
+    return result[0];
+  }
+  
+  async getAllChatMessages(limit: number = 100): Promise<ChatMessage[]> {
+    return await db.select()
+      .from(chatMessages)
+      .orderBy(desc(chatMessages.timestamp))
+      .limit(limit);
   }
 }
 

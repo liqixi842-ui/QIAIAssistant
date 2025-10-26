@@ -100,3 +100,19 @@ export const insertTaskSchema = createInsertSchema(tasks).omit({
 
 export type InsertTask = z.infer<typeof insertTaskSchema>;
 export type Task = typeof tasks.$inferSelect;
+
+export const chatMessages = pgTable("chat_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  senderId: varchar("sender_id").notNull(), // 发送者用户ID
+  senderName: text("sender_name").notNull(), // 发送者昵称
+  content: text("content").notNull(), // 消息内容
+  timestamp: text("timestamp").notNull().default(sql`CURRENT_TIMESTAMP`), // 时间戳
+});
+
+export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({
+  id: true,
+  timestamp: true,
+});
+
+export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
+export type ChatMessage = typeof chatMessages.$inferSelect;

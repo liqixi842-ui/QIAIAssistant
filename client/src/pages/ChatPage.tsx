@@ -1,12 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Search, Send, Plus, Users, User as UserIcon, X, Circle } from 'lucide-react';
+import { Search, Send, Plus, Users, User as UserIcon, X, Wifi, WifiOff } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { useWebSocket } from '@/contexts/WebSocketContext';
+import type { ChatMessage } from '@shared/schema';
 import {
   Dialog,
   DialogContent,
@@ -89,14 +92,12 @@ const mockMessages: Message[] = [
 
 export default function ChatPage() {
   const { toast } = useToast();
-  const wsRef = useRef<WebSocket | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
-  const [onlineUsers, setOnlineUsers] = useState<SystemUser[]>([]);
+  const { isConnected, sendMessage, lastMessage, onlineUsers: wsOnlineUsers } = useWebSocket();
   
   const [selectedContact, setSelectedContact] = useState<Contact>(mockContacts[0]);
   const [contacts, setContacts] = useState<Contact[]>(mockContacts);
   const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState<Message[]>(mockMessages);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [userSearchTerm, setUserSearchTerm] = useState('');
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
@@ -104,108 +105,66 @@ export default function ChatPage() {
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [showUserList, setShowUserList] = useState(false);
 
-  // WebSocket连接
+  const currentUserStr = localStorage.getItem('currentUser');
+  const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
+
+  // 加载历史消息
+  const { data: historyData } = useQuery<{ success: boolean; data: ChatMessage[] }>({
+    queryKey: ['/api/chat/messages'],
+    enabled: !!currentUser,
+  });
+
+  // 初始化历史消息
   useEffect(() => {
-    const currentUserStr = localStorage.getItem('currentUser');
-    if (!currentUserStr) return;
-
-    const currentUser = JSON.parse(currentUserStr);
-    
-    // 连接WebSocket
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
-    const socket = new WebSocket(wsUrl);
-
-    socket.onopen = () => {
-      console.log('WebSocket已连接');
-      setIsConnected(true);
-      
-      // 发送身份验证
-      socket.send(JSON.stringify({
-        type: 'auth',
-        userId: currentUser.id,
-        username: currentUser.username,
-        nickname: currentUser.nickname || currentUser.name
+    if (historyData?.success && historyData.data && currentUser) {
+      const loadedMessages: Message[] = historyData.data.map((msg) => ({
+        id: msg.id,
+        sender: msg.senderName,
+        content: msg.content,
+        time: new Date(msg.timestamp).toLocaleTimeString('zh-CN', { 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        }),
+        isMine: msg.senderId === currentUser.id
       }));
+      setMessages(loadedMessages);
+    }
+  }, [historyData, currentUser]);
 
+  // 监听WebSocket消息
+  useEffect(() => {
+    if (!lastMessage) return;
+
+    if (lastMessage.type === 'user_joined') {
       toast({
-        title: "已连接",
-        description: "团队群聊已连接",
+        title: "用户上线",
+        description: `${lastMessage.user.nickname} 加入了聊天`,
       });
-    };
+    }
 
-    socket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-
-        if (data.type === 'online_users') {
-          // 更新在线用户列表
-          setOnlineUsers(data.users.map((u: any) => ({
-            id: u.userId,
-            username: u.username,
-            nickname: u.nickname,
-            isOnline: true
-          })));
-        }
-
-        if (data.type === 'user_joined') {
-          toast({
-            title: "用户上线",
-            description: `${data.user.nickname} 加入了聊天`,
-          });
-        }
-
-        if (data.type === 'user_left') {
-          toast({
-            title: "用户离线",
-            description: `${data.user.nickname} 离开了聊天`,
-          });
-        }
-
-        if (data.type === 'chat') {
-          // 接收新消息
-          const newMessage: Message = {
-            id: data.messageId,
-            sender: data.sender,
-            content: data.content,
-            time: new Date(data.timestamp).toLocaleTimeString('zh-CN', { 
-              hour: '2-digit', 
-              minute: '2-digit' 
-            }),
-            isMine: data.senderId === currentUser.id
-          };
-
-          setMessages(prev => [...prev, newMessage]);
-        }
-      } catch (error) {
-        console.error('处理WebSocket消息失败:', error);
-      }
-    };
-
-    socket.onclose = () => {
-      console.log('WebSocket已断开');
-      setIsConnected(false);
+    if (lastMessage.type === 'user_left') {
       toast({
-        title: "连接断开",
-        description: "团队群聊连接已断开",
-        variant: "destructive"
+        title: "用户离线",
+        description: `${lastMessage.user.nickname} 离开了聊天`,
       });
-    };
+    }
 
-    socket.onerror = (error) => {
-      console.error('WebSocket错误:', error);
-      setIsConnected(false);
-    };
+    if (lastMessage.type === 'chat' && currentUser) {
+      // 接收新消息
+      const newMessage: Message = {
+        id: lastMessage.messageId,
+        sender: lastMessage.sender,
+        content: lastMessage.content,
+        time: new Date(lastMessage.timestamp).toLocaleTimeString('zh-CN', { 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        }),
+        isMine: lastMessage.senderId === currentUser.id
+      };
 
-    wsRef.current = socket;
-
-    // 清理函数
-    return () => {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.close();
-      }
-    };
-  }, []);
+      setMessages(prev => [...prev, newMessage]);
+    }
+  }, [lastMessage, currentUser]);
 
   const filteredContacts = contacts.filter(contact =>
     contact.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -220,15 +179,15 @@ export default function ChatPage() {
   );
 
   const handleSend = () => {
-    if (message.trim() && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+    if (message.trim() && isConnected) {
       const messageId = Date.now().toString();
       
       // 通过WebSocket发送消息
-      wsRef.current.send(JSON.stringify({
+      sendMessage({
         type: 'chat',
         messageId,
         content: message
-      }));
+      });
 
       // 立即显示自己的消息
       const newMessage: Message = {
@@ -294,7 +253,22 @@ export default function ChatPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">团队群聊</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-3xl font-bold">团队群聊</h1>
+          <Badge variant={isConnected ? "default" : "destructive"} data-testid="badge-connection-status">
+            {isConnected ? (
+              <>
+                <Wifi className="h-3 w-3 mr-1" />
+                已连接
+              </>
+            ) : (
+              <>
+                <WifiOff className="h-3 w-3 mr-1" />
+                断开
+              </>
+            )}
+          </Badge>
+        </div>
         <div className="flex gap-2">
           <Dialog open={showUserList} onOpenChange={setShowUserList}>
             <DialogTrigger asChild>

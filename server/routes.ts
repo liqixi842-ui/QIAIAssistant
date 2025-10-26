@@ -1270,6 +1270,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 获取聊天历史消息
+  app.get("/api/chat/messages", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
+      const messages = await storage.getAllChatMessages(limit);
+      // 反转顺序，最新的在最后
+      res.json({ success: true, data: messages.reverse() });
+    } catch (error: any) {
+      console.error('获取聊天消息失败:', error);
+      res.status(500).json({ error: "获取聊天消息失败", details: error.message });
+    }
+  });
+
   // ============================================
   // WebSocket 团队群聊服务器
   // ============================================
@@ -1285,7 +1302,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   wss.on('connection', (ws: WebSocket) => {
     console.log('新的WebSocket连接');
 
-    ws.on('message', (data: string) => {
+    ws.on('message', async (data: string) => {
       try {
         const message = JSON.parse(data.toString());
 
@@ -1326,6 +1343,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return;
           }
 
+          const timestamp = new Date().toISOString();
+
+          // 保存消息到数据库
+          try {
+            await storage.createChatMessage({
+              senderId: sender.userId,
+              senderName: sender.nickname,
+              content: message.content,
+            });
+          } catch (error) {
+            console.error('保存聊天消息失败:', error);
+          }
+
           // 广播消息给所有客户端
           broadcast({
             type: 'chat',
@@ -1333,7 +1363,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             sender: sender.nickname,
             senderId: sender.userId,
             content: message.content,
-            timestamp: new Date().toISOString()
+            timestamp
           });
 
           console.log(`消息从 ${sender.nickname}: ${message.content}`);

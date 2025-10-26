@@ -919,7 +919,7 @@ export default function ScriptsPage() {
                         Office文档（Word/Excel/PPT）
                       </p>
                       <p className="text-sm text-muted-foreground mb-4">
-                        浏览器无法直接预览Office文档<br/>请点击下方按钮下载到本地查看
+                        浏览器限制无法直接预览Office文档<br/>请点击下方按钮下载到本地查看
                       </p>
                     </>
                   ) : (
