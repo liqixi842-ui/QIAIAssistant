@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -108,6 +108,48 @@ export default function ChatPage() {
 
   const currentUserStr = localStorage.getItem('currentUser');
   const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
+  
+  // 用于自动滚动到底部
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // 自动滚动到底部
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // 当消息列表更新时自动滚动到底部
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  // 格式化日期+时间（类似Telegram）
+  const formatDateTime = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const dateStr = date.toLocaleDateString('zh-CN', { 
+      year: 'numeric', 
+      month: '2-digit', 
+      day: '2-digit' 
+    });
+    const timeStr = date.toLocaleTimeString('zh-CN', { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+
+    // 如果是今天，只显示时间
+    if (date.toDateString() === today.toDateString()) {
+      return timeStr;
+    }
+    // 如果是昨天，显示"昨天 + 时间"
+    if (date.toDateString() === yesterday.toDateString()) {
+      return `昨天 ${timeStr}`;
+    }
+    // 其他日期显示完整日期+时间
+    return `${dateStr} ${timeStr}`;
+  };
 
   // 加载历史消息 - 根据选中的聊天室ID查询
   const { data: historyData } = useQuery<{ success: boolean; data: ChatMessage[] }>({
@@ -128,10 +170,7 @@ export default function ChatPage() {
         id: msg.id,
         sender: msg.senderName,
         content: msg.content,
-        time: new Date(msg.timestamp).toLocaleTimeString('zh-CN', { 
-          hour: '2-digit', 
-          minute: '2-digit' 
-        }),
+        time: formatDateTime(msg.timestamp),
         isMine: msg.senderId === currentUser.id,
         chatId: msg.chatId || selectedContact.id // 使用数据库中的chatId
       }));
@@ -176,10 +215,7 @@ export default function ChatPage() {
         id: lastMessage.messageId,
         sender: lastMessage.sender,
         content: lastMessage.content,
-        time: new Date(lastMessage.timestamp).toLocaleTimeString('zh-CN', { 
-          hour: '2-digit', 
-          minute: '2-digit' 
-        }),
+        time: formatDateTime(lastMessage.timestamp),
         isMine: lastMessage.senderId === currentUser.id,
         chatId: messageChatId
       };
@@ -564,6 +600,8 @@ export default function ChatPage() {
                   <p className="text-sm">此对话功能正在开发中，当前仅支持团队群聊</p>
                 </div>
               )}
+              {/* 用于自动滚动到底部的锚点 */}
+              <div ref={messagesEndRef} />
             </div>
           </ScrollArea>
           <div className="border-t px-4 py-3 flex gap-2 flex-shrink-0">
