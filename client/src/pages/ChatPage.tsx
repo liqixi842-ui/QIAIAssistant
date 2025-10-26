@@ -591,9 +591,9 @@ export default function ChatPage() {
               </Button>
             )}
           </div>
-          <div className="flex-1 relative">
-            <ScrollArea ref={scrollAreaRef} className="h-full px-4">
-              <div className="space-y-4">
+          <div className="flex-1 relative overflow-hidden">
+            <ScrollArea ref={scrollAreaRef} className="absolute inset-0 px-4">
+              <div className="space-y-4 py-4">
               {selectedContact.id === '1' ? (
                 messages.filter(msg => msg.chatId === selectedContact.id).map((msg) => (
                   <div
