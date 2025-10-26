@@ -227,8 +227,10 @@ export default function ChatPage() {
             return prev;
           }
           console.log('添加新消息到列表:', newMessage);
-          // 收到新消息后滚动到底部
-          setTimeout(scrollToBottom, 100);
+          // 只在是自己发送的消息时才自动滚动到底部
+          if (newMessage.isMine) {
+            setTimeout(scrollToBottom, 100);
+          }
           return [...prev, newMessage];
         });
       }
