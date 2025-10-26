@@ -130,10 +130,10 @@ export default function ChatPage() {
 
   // 绑定滚动监听
   useEffect(() => {
-    const scrollViewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
-    if (scrollViewport) {
-      scrollViewport.addEventListener('scroll', handleScroll);
-      return () => scrollViewport.removeEventListener('scroll', handleScroll);
+    const scrollContainer = scrollAreaRef.current;
+    if (scrollContainer) {
+      scrollContainer.addEventListener('scroll', handleScroll);
+      return () => scrollContainer.removeEventListener('scroll', handleScroll);
     }
   }, []);
 
@@ -592,7 +592,11 @@ export default function ChatPage() {
             )}
           </div>
           <div className="flex-1 relative overflow-hidden">
-            <ScrollArea ref={scrollAreaRef} className="absolute inset-0 px-4">
+            <div 
+              ref={scrollAreaRef}
+              className="absolute inset-0 overflow-y-auto px-4"
+              style={{ scrollBehavior: 'smooth' }}
+            >
               <div className="space-y-4 py-4">
               {selectedContact.id === '1' ? (
                 messages.filter(msg => msg.chatId === selectedContact.id).map((msg) => (
@@ -624,8 +628,8 @@ export default function ChatPage() {
               )}
               {/* 用于自动滚动到底部的锚点 */}
               <div ref={messagesEndRef} />
+              </div>
             </div>
-          </ScrollArea>
             {/* Telegram风格的回到底部按钮 */}
             {showScrollButton && (
               <Button
