@@ -517,8 +517,8 @@ export default function ChatPage() {
           </ScrollArea>
         </Card>
 
-        <Card className="lg:col-span-2 p-4 flex flex-col h-full">
-          <div className="border-b pb-3 mb-4 flex items-center justify-between">
+        <Card className="lg:col-span-2 p-0 flex flex-col h-full overflow-hidden">
+          <div className="border-b px-4 py-3 flex items-center justify-between flex-shrink-0">
             <div className="flex items-center gap-2">
               <h3 className="font-semibold">{selectedContact.name}</h3>
               {selectedContact.isGroup && (
@@ -534,7 +534,7 @@ export default function ChatPage() {
               </Button>
             )}
           </div>
-          <ScrollArea className="flex-1 mb-4">
+          <ScrollArea className="flex-1 px-4">
             <div className="space-y-4">
               {selectedContact.id === '1' ? (
                 messages.filter(msg => msg.chatId === selectedContact.id).map((msg) => (
@@ -566,7 +566,7 @@ export default function ChatPage() {
               )}
             </div>
           </ScrollArea>
-          <div className="flex gap-2">
+          <div className="border-t px-4 py-3 flex gap-2 flex-shrink-0">
             <Input
               placeholder={selectedContact.id === '1' ? "输入消息..." : "此对话功能开发中..."}
               value={message}
