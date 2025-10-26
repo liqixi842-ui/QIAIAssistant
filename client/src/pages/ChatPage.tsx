@@ -36,6 +36,7 @@ interface Message {
   content: string;
   time: string;
   isMine: boolean;
+  chatId: string; // 标识消息属于哪个对话
 }
 
 interface SystemUser {
@@ -83,11 +84,11 @@ const mockContacts: Contact[] = [
 ];
 
 const mockMessages: Message[] = [
-  { id: '1', sender: '张伟', content: '大家早上好！', time: '09:00', isMine: false },
-  { id: '2', sender: '我', content: '早上好！', time: '09:01', isMine: true },
-  { id: '3', sender: '李强', content: '今天的目标是多少？', time: '09:15', isMine: false },
-  { id: '4', sender: '我', content: '我今天计划联系50个客户', time: '09:16', isMine: true },
-  { id: '5', sender: '王丽', content: '大家加油！本周目标是200个开户', time: '09:20', isMine: false },
+  { id: '1', sender: '张伟', content: '大家早上好！', time: '09:00', isMine: false, chatId: '1' },
+  { id: '2', sender: '我', content: '早上好！', time: '09:01', isMine: true, chatId: '1' },
+  { id: '3', sender: '李强', content: '今天的目标是多少？', time: '09:15', isMine: false, chatId: '1' },
+  { id: '4', sender: '我', content: '我今天计划联系50个客户', time: '09:16', isMine: true, chatId: '1' },
+  { id: '5', sender: '王丽', content: '大家加油！本周目标是200个开户', time: '09:20', isMine: false, chatId: '1' },
 ];
 
 export default function ChatPage() {
@@ -114,7 +115,7 @@ export default function ChatPage() {
     enabled: !!currentUser,
   });
 
-  // 初始化历史消息
+  // 初始化历史消息（当前所有历史消息都是团队群聊的）
   useEffect(() => {
     if (historyData?.success && historyData.data && currentUser) {
       const loadedMessages: Message[] = historyData.data.map((msg) => ({
@@ -125,7 +126,8 @@ export default function ChatPage() {
           hour: '2-digit', 
           minute: '2-digit' 
         }),
-        isMine: msg.senderId === currentUser.id
+        isMine: msg.senderId === currentUser.id,
+        chatId: '1' // 默认为团队群聊（id=1）
       }));
       setMessages(loadedMessages);
     }
@@ -159,7 +161,8 @@ export default function ChatPage() {
           hour: '2-digit', 
           minute: '2-digit' 
         }),
-        isMine: lastMessage.senderId === currentUser.id
+        isMine: lastMessage.senderId === currentUser.id,
+        chatId: '1' // 当前所有消息都属于团队群聊（id=1）
       };
 
       // 去重：检查消息ID是否已存在
@@ -239,7 +242,7 @@ export default function ChatPage() {
       
       setContacts(prev => [newContact, ...prev]);
       setSelectedContact(newContact);
-      setMessages([]); // 新聊天，消息为空
+      // 注意：不清空messages，保留团队聊天历史
     }
     
     setShowUserList(false);
@@ -422,8 +425,8 @@ export default function ChatPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[600px]">
-        <Card className="p-4 space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[calc(100vh-200px)]">
+        <Card className="p-4 space-y-4 h-full flex flex-col">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -434,7 +437,7 @@ export default function ChatPage() {
               data-testid="input-search-chat"
             />
           </div>
-          <ScrollArea className="h-[500px]">
+          <ScrollArea className="flex-1">
             <div className="space-y-2">
               {filteredContacts.map((contact) => (
                 <div
@@ -496,39 +499,50 @@ export default function ChatPage() {
           </div>
           <ScrollArea className="flex-1 mb-4">
             <div className="space-y-4">
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`flex ${msg.isMine ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div className={`max-w-[70%] space-y-1`}>
-                    {!msg.isMine && selectedContact.isGroup && (
-                      <p className="text-xs text-muted-foreground">{msg.sender}</p>
-                    )}
-                    <div
-                      className={`p-3 rounded-md ${
-                        msg.isMine
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted'
-                      }`}
-                    >
-                      <p className="text-sm">{msg.content}</p>
+              {selectedContact.id === '1' ? (
+                messages.filter(msg => msg.chatId === selectedContact.id).map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex ${msg.isMine ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div className={`max-w-[70%] space-y-1`}>
+                      {!msg.isMine && selectedContact.isGroup && (
+                        <p className="text-xs text-muted-foreground">{msg.sender}</p>
+                      )}
+                      <div
+                        className={`p-3 rounded-md ${
+                          msg.isMine
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted'
+                        }`}
+                      >
+                        <p className="text-sm">{msg.content}</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{msg.time}</p>
                     </div>
-                    <p className="text-xs text-muted-foreground">{msg.time}</p>
                   </div>
+                ))
+              ) : (
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  <p className="text-sm">此对话功能正在开发中，当前仅支持团队群聊</p>
                 </div>
-              ))}
+              )}
             </div>
           </ScrollArea>
           <div className="flex gap-2">
             <Input
-              placeholder="输入消息..."
+              placeholder={selectedContact.id === '1' ? "输入消息..." : "此对话功能开发中..."}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+              disabled={selectedContact.id !== '1'}
               data-testid="input-message"
             />
-            <Button onClick={handleSend} data-testid="button-send">
+            <Button 
+              onClick={handleSend} 
+              disabled={selectedContact.id !== '1'}
+              data-testid="button-send"
+            >
               <Send className="h-4 w-4" />
             </Button>
           </div>
