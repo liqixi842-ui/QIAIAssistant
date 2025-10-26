@@ -184,32 +184,38 @@ export default function ChatPage() {
     staleTime: 60000, // 数据保持新鲜1分钟
   });
 
-  // 用于跟踪是否已经加载过历史消息
-  const hasLoadedHistoryRef = useRef<{ [chatId: string]: boolean }>({});
-
   // 初始化历史消息
   useEffect(() => {
     // 只有当前选中团队群聊（id=1）且有历史数据时才应用
     if (selectedContact.id === '1' && historyData?.success && historyData.data && currentUser) {
-      // 只在第一次加载或切换聊天室时设置历史消息，避免覆盖新消息
-      if (!hasLoadedHistoryRef.current[selectedContact.id]) {
-        const loadedMessages: Message[] = historyData.data.map((msg) => ({
-          id: msg.id,
-          sender: msg.senderName,
-          content: msg.content,
-          time: formatDateTime(msg.timestamp),
-          isMine: msg.senderId === currentUser.id,
-          chatId: msg.chatId || selectedContact.id // 使用数据库中的chatId
-        }));
-        setMessages(loadedMessages);
-        hasLoadedHistoryRef.current[selectedContact.id] = true;
-        // 加载历史消息后滚动到底部
-        setTimeout(scrollToBottom, 100);
-      }
+      const loadedMessages: Message[] = historyData.data.map((msg) => ({
+        id: msg.id,
+        sender: msg.senderName,
+        content: msg.content,
+        time: formatDateTime(msg.timestamp),
+        isMine: msg.senderId === currentUser.id,
+        chatId: msg.chatId || selectedContact.id // 使用数据库中的chatId
+      }));
+      
+      // 使用消息去重合并：保留WebSocket实时消息，补充数据库历史消息
+      setMessages(prev => {
+        // 创建现有消息ID的Set用于快速查找
+        const existingIds = new Set(prev.map(m => m.id));
+        // 只添加不存在的历史消息
+        const newMessages = loadedMessages.filter(msg => !existingIds.has(msg.id));
+        // 合并并按时间排序
+        const merged = [...prev, ...newMessages].sort((a, b) => {
+          // 简单的时间比较，假设ID是时间戳生成的
+          return a.id.localeCompare(b.id);
+        });
+        return merged;
+      });
+      
+      // 加载历史消息后滚动到底部
+      setTimeout(scrollToBottom, 100);
     } else if (selectedContact.id !== '1') {
       // 切换到其他聊天室时清空历史记录（暂无持久化）
       setMessages([]);
-      hasLoadedHistoryRef.current[selectedContact.id] = false;
     }
   }, [historyData, currentUser, selectedContact.id]);
 
@@ -649,7 +655,7 @@ export default function ChatPage() {
             {showScrollButton && (
               <Button
                 size="icon"
-                className="absolute bottom-4 right-4 rounded-full shadow-lg z-10"
+                className="absolute bottom-20 right-6 rounded-full shadow-lg z-50"
                 onClick={() => {
                   isUserAtBottomRef.current = true; // 标记用户回到底部
                   scrollToBottom();
