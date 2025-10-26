@@ -150,7 +150,7 @@ export default function ChatPage() {
     }
 
     if (lastMessage.type === 'chat' && currentUser) {
-      // 接收新消息
+      // 接收新消息 - 添加去重逻辑
       const newMessage: Message = {
         id: lastMessage.messageId,
         sender: lastMessage.sender,
@@ -162,9 +162,14 @@ export default function ChatPage() {
         isMine: lastMessage.senderId === currentUser.id
       };
 
-      setMessages(prev => [...prev, newMessage]);
+      // 去重：检查消息ID是否已存在
+      setMessages(prev => {
+        const exists = prev.some(msg => msg.id === newMessage.id);
+        if (exists) return prev;
+        return [...prev, newMessage];
+      });
     }
-  }, [lastMessage, currentUser]);
+  }, [lastMessage]);
 
   const filteredContacts = contacts.filter(contact =>
     contact.name.toLowerCase().includes(searchTerm.toLowerCase())
