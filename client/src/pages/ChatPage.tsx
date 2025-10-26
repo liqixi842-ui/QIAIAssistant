@@ -517,7 +517,7 @@ export default function ChatPage() {
           </ScrollArea>
         </Card>
 
-        <Card className="lg:col-span-2 p-4 flex flex-col">
+        <Card className="lg:col-span-2 p-4 flex flex-col h-full">
           <div className="border-b pb-3 mb-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <h3 className="font-semibold">{selectedContact.name}</h3>
