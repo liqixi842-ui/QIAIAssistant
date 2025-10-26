@@ -85,7 +85,7 @@ Preferred communication style: Simple, everyday language.
   - Status field uses English values (pending/active/completed)
 - **Feedback System:** Universal access for submission and viewing, anonymous display for most roles, resolution tracking, and management controls for supervisors/directors.
 
-## Recent Changes (2025-10-26)
+## Recent Changes (2025-01-26)
 
 1. **Reports System - 4-Dimensional Analysis Table (Latest)**:
    - **User Requirement**: Expanded from 2 to 4 dimensions based on explicit user requirement
@@ -131,7 +131,13 @@ Preferred communication style: Simple, everyday language.
    14. firstDeposit (首冲) - First deposit
    15. addedFunds (加金) - Added funds
 
-4. **Previous Session (2025-01-25)**:
+4. **Critical Bug Fixes (2025-01-26)**:
+   - **Learning Materials Persistence**: Added `learning_materials` database table with fields: id, title, categoryId, fileType, fileSize, fileUrl, uploadDate, uploadedBy
+   - **Chat Message Duplication Fix**: Modified WebSocket broadcast logic to use `broadcastToAll()` for chat messages (includes sender), preventing duplicate messages
+   - **Client-Side Chat Logic**: Removed optimistic UI update on message send, now waits for server broadcast to display message
+   - **Database Schema**: Added learningMaterials table to shared/schema.ts with proper insert schema and types
+
+5. **Previous Session (2025-01-25)**:
    - Complete Frontend-Backend Integration for Tasks
    - AI Auto-Generate Tasks Feature
    - Data Flow Alignment fixes
