@@ -1356,8 +1356,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.error('保存聊天消息失败:', error);
           }
 
-          // 广播消息给所有客户端
-          broadcast({
+          // 广播消息给所有客户端（包括发送者）
+          broadcastToAll({
             type: 'chat',
             messageId: message.messageId,
             sender: sender.nickname,
@@ -1398,6 +1398,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const data = JSON.stringify(message);
     clients.forEach((user, client) => {
       if (client !== sender && client.readyState === WebSocket.OPEN) {
+        client.send(data);
+      }
+    });
+  }
+
+  // 广播消息给所有客户端（包括发送者）
+  function broadcastToAll(message: any) {
+    const data = JSON.stringify(message);
+    clients.forEach((user, client) => {
+      if (client.readyState === WebSocket.OPEN) {
         client.send(data);
       }
     });

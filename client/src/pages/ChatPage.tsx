@@ -182,23 +182,14 @@ export default function ChatPage() {
     if (message.trim() && isConnected) {
       const messageId = Date.now().toString();
       
-      // 通过WebSocket发送消息
+      // 通过WebSocket发送消息（服务器会广播给所有人包括自己）
       sendMessage({
         type: 'chat',
         messageId,
         content: message
       });
 
-      // 立即显示自己的消息
-      const newMessage: Message = {
-        id: messageId,
-        sender: '我',
-        content: message,
-        time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
-        isMine: true
-      };
-      
-      setMessages(prev => [...prev, newMessage]);
+      // 清空输入框，不立即添加消息（等待服务器广播）
       setMessage('');
     } else if (!isConnected) {
       toast({

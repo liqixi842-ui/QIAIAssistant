@@ -116,3 +116,23 @@ export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({
 
 export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
 export type ChatMessage = typeof chatMessages.$inferSelect;
+
+// 学习资料表
+export const learningMaterials = pgTable("learning_materials", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(), // 文件标题
+  categoryId: text("category_id").notNull(), // 分类ID
+  fileType: text("file_type").notNull(), // 文件类型
+  fileSize: integer("file_size").notNull(), // 文件大小（字节）
+  fileUrl: text("file_url").notNull(), // 文件URL（存储路径）
+  uploadDate: text("upload_date").notNull().default(sql`CURRENT_TIMESTAMP`), // 上传日期
+  uploadedBy: varchar("uploaded_by"), // 上传者ID
+});
+
+export const insertLearningMaterialSchema = createInsertSchema(learningMaterials).omit({
+  id: true,
+  uploadDate: true,
+});
+
+export type InsertLearningMaterial = z.infer<typeof insertLearningMaterialSchema>;
+export type LearningMaterial = typeof learningMaterials.$inferSelect;
