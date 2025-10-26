@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Search, Send, Plus, Users, User as UserIcon, X, Wifi, WifiOff } from 'lucide-react';
+import { Search, Send, Plus, Users, User as UserIcon, X, Wifi, WifiOff, ArrowDown } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
@@ -105,17 +105,37 @@ export default function ChatPage() {
   const [groupName, setGroupName] = useState('');
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [showUserList, setShowUserList] = useState(false);
+  const [showScrollButton, setShowScrollButton] = useState(false);
 
   const currentUserStr = localStorage.getItem('currentUser');
   const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
   
   // 用于自动滚动到底部
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   // 自动滚动到底部
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    setShowScrollButton(false);
   };
+
+  // 监听滚动事件，判断是否显示"回到底部"按钮
+  const handleScroll = (e: Event) => {
+    const target = e.target as HTMLDivElement;
+    const { scrollTop, scrollHeight, clientHeight } = target;
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+    setShowScrollButton(!isNearBottom);
+  };
+
+  // 绑定滚动监听
+  useEffect(() => {
+    const scrollViewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+    if (scrollViewport) {
+      scrollViewport.addEventListener('scroll', handleScroll);
+      return () => scrollViewport.removeEventListener('scroll', handleScroll);
+    }
+  }, []);
 
   // 格式化日期+时间（类似Telegram）
   const formatDateTime = (timestamp: string) => {
@@ -571,8 +591,9 @@ export default function ChatPage() {
               </Button>
             )}
           </div>
-          <ScrollArea className="flex-1 px-4">
-            <div className="space-y-4">
+          <div className="flex-1 relative">
+            <ScrollArea ref={scrollAreaRef} className="h-full px-4">
+              <div className="space-y-4">
               {selectedContact.id === '1' ? (
                 messages.filter(msg => msg.chatId === selectedContact.id).map((msg) => (
                   <div
@@ -605,6 +626,18 @@ export default function ChatPage() {
               <div ref={messagesEndRef} />
             </div>
           </ScrollArea>
+            {/* Telegram风格的回到底部按钮 */}
+            {showScrollButton && (
+              <Button
+                size="icon"
+                className="absolute bottom-4 right-4 rounded-full shadow-lg z-10"
+                onClick={scrollToBottom}
+                data-testid="button-scroll-to-bottom"
+              >
+                <ArrowDown className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
           <div className="border-t px-4 py-3 flex gap-2 flex-shrink-0">
             <Input
               placeholder={selectedContact.id === '1' ? "输入消息..." : "此对话功能开发中..."}
