@@ -589,7 +589,7 @@ export default function ChatPage() {
           </ScrollArea>
         </Card>
 
-        <Card className="lg:col-span-2 p-0 flex flex-col h-full overflow-hidden">
+        <Card className="lg:col-span-2 p-0 flex flex-col h-full overflow-hidden relative">
           <div className="border-b px-4 py-3 flex items-center justify-between flex-shrink-0">
             <div className="flex items-center gap-2">
               <h3 className="font-semibold">{selectedContact.name}</h3>
@@ -606,7 +606,7 @@ export default function ChatPage() {
               </Button>
             )}
           </div>
-          <div className="flex-1 relative overflow-hidden">
+          <div className="flex-1 overflow-hidden">
             <div 
               ref={scrollAreaRef}
               className="absolute inset-0 overflow-y-auto px-4"
