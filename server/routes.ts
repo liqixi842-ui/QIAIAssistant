@@ -1175,15 +1175,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // 5. 按团队汇总（计算15个指标）
       const teams = new Set<string>();
       customers.forEach(c => {
-        const creator = userMap.get(c.createdBy);
-        if (creator?.team) {
-          teams.add(creator.team);
+        if (c.createdBy) {
+          const creator = userMap.get(c.createdBy);
+          if (creator?.team) {
+            teams.add(creator.team);
+          }
         }
       });
       
       const teamArray = Array.from(teams).sort();
       const teamSummary = teamArray.map(team => {
         const teamCustomers = customers.filter(c => {
+          if (!c.createdBy) return false;
           const creator = userMap.get(c.createdBy);
           return creator?.team === team;
         });
@@ -1217,6 +1220,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // 为没有团队的客户添加"未知团队"行
       const customersWithoutTeam = customers.filter(c => {
+        if (!c.createdBy) return true;
         const creator = userMap.get(c.createdBy);
         return !creator || !creator.team;
       });
