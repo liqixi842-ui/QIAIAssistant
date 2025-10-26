@@ -175,7 +175,9 @@ export default function ChatPage() {
   const { data: historyData } = useQuery<{ success: boolean; data: ChatMessage[] }>({
     queryKey: ['/api/chat/messages', selectedContact.id],
     queryFn: async () => {
-      const response = await fetch(`/api/chat/messages?chatId=${selectedContact.id}`);
+      const response = await fetch(`/api/chat/messages?chatId=${selectedContact.id}`, {
+        credentials: 'include' // 关键：发送session cookie
+      });
       if (!response.ok) throw new Error('Failed to fetch messages');
       return response.json();
     },
