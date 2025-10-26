@@ -211,19 +211,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       req.session.username = user.username;
       req.session.role = user.role;
 
-      res.json({
-        success: true,
-        message: "登录成功",
-        user: {
-          id: user.id,
-          username: user.username,
-          name: user.name,
-          nickname: user.nickname,
-          role: user.role,
-          position: user.position,
-          team: user.team,
-          supervisorId: user.supervisorId
+      // 显式保存session，确保cookie被发送
+      req.session.save((err) => {
+        if (err) {
+          console.error('❌ Session保存失败:', err);
+          return res.status(500).json({ error: "登录失败，请重试" });
         }
+
+        console.log('✅ Session保存成功，userId:', user.id);
+        res.json({
+          success: true,
+          message: "登录成功",
+          user: {
+            id: user.id,
+            username: user.username,
+            name: user.name,
+            nickname: user.nickname,
+            role: user.role,
+            position: user.position,
+            team: user.team,
+            supervisorId: user.supervisorId
+          }
+        });
       });
     } catch (error) {
       console.error('登录失败:', error);
