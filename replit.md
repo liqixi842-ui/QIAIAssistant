@@ -87,14 +87,27 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (2025-01-26)
 
-1. **Chat UI/UX Improvements (Latest)**:
+1. **🔥 Critical Chat Room Isolation Fix - Complete End-to-End Implementation (Latest)**:
+   - **Root Cause Fixed**: Completely eliminated message cross-contamination between chat rooms
+   - **Database Migration**: Added `chat_id VARCHAR NOT NULL DEFAULT '1'` column to chat_messages table
+   - **Schema Layer**: Added chatId field to chatMessages table in shared/schema.ts
+   - **Storage Layer**: Implemented getChatMessagesByChatId() method for filtered queries
+   - **API Layer**: GET /api/chat/messages endpoint now accepts and filters by chatId parameter
+   - **WebSocket Layer**: All broadcast messages now include chatId field for proper routing
+   - **Frontend Layer**: 
+     - React Query properly passes chatId parameter in queryFn
+     - useEffect only applies history when selectedContact.id === '1' (team chat)
+     - WebSocket message handler filters incoming messages by chatId
+     - Switching chat rooms now correctly clears/loads appropriate message history
+   - **Result**: Messages in Chat A will never appear in Chat B, chat history persists correctly
+   - **Architect Review**: Passed 3 rounds of comprehensive review, ready for production deployment
+   - **Current Limitation**: Only team chat (销售团队, id='1') has database persistence, other chats show "此对话功能正在开发中"
+
+2. **Chat UI/UX Improvements**:
    - **Fixed Input Box Position**: Changed grid height to `h-[calc(100vh-200px)]` for viewport-based sizing, input box now fixed at bottom regardless of message count
-   - **Message Routing Fix**: Added `chatId` field to Message interface, messages now filtered by conversation
-   - **Current Limitation**: Only team chat (销售团队, id='1') fully functional, other conversations show "此对话功能正在开发中" placeholder
-   - **Preserved Chat History**: Removed `setMessages([])` call when starting private chats to preserve team chat history across contact switches
    - **Layout Architecture**: Both Cards use `flex flex-col`, ScrollAreas use `flex-1` for auto-sizing, responsive across breakpoints
 
-2. **Reports System - 4-Dimensional Analysis Table**:
+3. **Reports System - 4-Dimensional Analysis Table**:
    - **User Requirement**: Expanded from 2 to 4 dimensions based on explicit user requirement
    - **Backend API**: GET /api/reports/summary-tables endpoint
      - Returns 4 summary datasets: channelSummary, dateSummary, teamSummary, agentSummary
@@ -115,13 +128,13 @@ Preferred communication style: Simple, everyday language.
      - Verified data consistency across all 4 dimensions
    - **Design Philosophy**: Simple dimension-switchable view with complete, accurate data across 4 key business perspectives
 
-2. **AI Recommended Scripts - Full Chinese Output**:
+4. **AI Recommended Scripts - Full Chinese Output**:
    - Modified AI prompts to generate 100% Chinese scripts regardless of customer nationality
    - Updated cultural insight examples to show Chinese-only communication templates
    - Business requirement: Sales staff can only read Chinese, so all scripts must be in Chinese
    - Fixed recommendedScript storage bug in server/storage.ts updateCustomer method
 
-3. **15 Key Metrics** (Used across all reports):
+5. **15 Key Metrics** (Used across all reports):
    1. total (进线) - Total customers
    2. readNoReply (已读不回) - Read but no reply
    3. noReadNoReply (不读不回) - No read no reply
@@ -138,13 +151,13 @@ Preferred communication style: Simple, everyday language.
    14. firstDeposit (首冲) - First deposit
    15. addedFunds (加金) - Added funds
 
-4. **Critical Bug Fixes (2025-01-26)**:
+6. **Critical Bug Fixes (2025-01-26)**:
    - **Learning Materials Persistence**: Added `learning_materials` database table with fields: id, title, categoryId, fileType, fileSize, fileUrl, uploadDate, uploadedBy
    - **Chat Message Duplication Fix**: Modified WebSocket broadcast logic to use `broadcastToAll()` for chat messages (includes sender), preventing duplicate messages
    - **Client-Side Chat Logic**: Removed optimistic UI update on message send, now waits for server broadcast to display message
    - **Database Schema**: Added learningMaterials table to shared/schema.ts with proper insert schema and types
 
-5. **Previous Session (2025-01-25)**:
+7. **Previous Session (2025-01-25)**:
    - Complete Frontend-Backend Integration for Tasks
    - AI Auto-Generate Tasks Feature
    - Data Flow Alignment fixes
