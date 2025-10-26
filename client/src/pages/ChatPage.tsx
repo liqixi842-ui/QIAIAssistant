@@ -146,6 +146,8 @@ export default function ChatPage() {
   useEffect(() => {
     if (!lastMessage) return;
 
+    console.log('收到WebSocket消息:', lastMessage);
+
     if (lastMessage.type === 'user_joined') {
       toast({
         title: "用户上线",
@@ -164,6 +166,12 @@ export default function ChatPage() {
       // 接收新消息 - 添加去重逻辑，并使用服务器返回的chatId
       const messageChatId = lastMessage.chatId || '1'; // 默认为团队群聊
       
+      console.log('处理聊天消息:', {
+        messageChatId,
+        selectedContactId: selectedContact.id,
+        willDisplay: messageChatId === selectedContact.id
+      });
+      
       const newMessage: Message = {
         id: lastMessage.messageId,
         sender: lastMessage.sender,
@@ -181,12 +189,16 @@ export default function ChatPage() {
         // 去重：检查消息ID是否已存在
         setMessages(prev => {
           const exists = prev.some(msg => msg.id === newMessage.id);
-          if (exists) return prev;
+          if (exists) {
+            console.log('消息已存在，跳过:', newMessage.id);
+            return prev;
+          }
+          console.log('添加新消息到列表:', newMessage);
           return [...prev, newMessage];
         });
       }
     }
-  }, [lastMessage]);
+  }, [lastMessage, currentUser, selectedContact.id]);
 
   const filteredContacts = contacts.filter(contact =>
     contact.name.toLowerCase().includes(searchTerm.toLowerCase())
