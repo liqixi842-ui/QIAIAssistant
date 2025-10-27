@@ -115,6 +115,7 @@ export default function TeamManagement({ userRole: propUserRole, userName: propU
     name: user.nickname || user.name,
     role: user.role,
     manager: user.supervisorId ? (userIdToName.get(user.supervisorId) || '') : '',
+    supervisorId: user.supervisorId || null,
     status: 'active' as const,
     equipment: {
       phoneCount: user.phone || 0,
@@ -151,27 +152,30 @@ export default function TeamManagement({ userRole: propUserRole, userName: propU
       // 业务员只能看到自己（使用ID比较，更可靠）
       members = teamMembers.filter(m => m.id === userId);
     } else if (isManager) {
-      // 经理可以看到自己和自己的下属
-      members = teamMembers.filter(m => m.id === userId || m.manager === userName);
+      // 经理可以看到自己和自己的下属（使用ID比较，更可靠）
+      members = teamMembers.filter(m => m.id === userId || m.supervisorId === userId);
     } else if (isDirector && !isLogistics) {
-      // 总监可以看到自己、直接下属和间接下属
+      // 总监可以看到自己、直接下属和间接下属（使用ID比较）
       members = teamMembers.filter(m => 
         m.id === userId ||
-        m.manager === userName ||
-        (m.role === '业务' && teamMembers.find(mgr => mgr.name === m.manager && mgr.manager === userName))
+        m.supervisorId === userId ||
+        (m.role === '业务' && teamMembers.find(mgr => mgr.id === m.supervisorId && mgr.supervisorId === userId))
       );
     } else if (isLogistics) {
       if (selectedDirector !== 'all') {
         const director = teamMembers.find(m => m.name === selectedDirector);
         if (director) {
           members = teamMembers.filter(m => 
-            m.manager === selectedDirector || 
-            m.name === selectedDirector ||
-            (m.role === '业务' && teamMembers.find(mgr => mgr.name === m.manager && mgr.manager === selectedDirector))
+            m.supervisorId === director.id || 
+            m.id === director.id ||
+            (m.role === '业务' && teamMembers.find(mgr => mgr.id === m.supervisorId && mgr.supervisorId === director.id))
           );
         }
       } else if (selectedManager !== 'all') {
-        members = teamMembers.filter(m => m.manager === selectedManager || m.name === selectedManager);
+        const manager = teamMembers.find(m => m.name === selectedManager);
+        if (manager) {
+          members = teamMembers.filter(m => m.supervisorId === manager.id || m.id === manager.id);
+        }
       }
     }
     

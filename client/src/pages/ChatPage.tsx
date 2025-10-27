@@ -76,6 +76,9 @@ export default function ChatPage() {
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [showUserList, setShowUserList] = useState(false);
   const [showMemberList, setShowMemberList] = useState(false);
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [addMemberSearchTerm, setAddMemberSearchTerm] = useState('');
+  const [selectedAddMembers, setSelectedAddMembers] = useState<string[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [showScrollButton, setShowScrollButton] = useState(false);
 
@@ -115,7 +118,7 @@ export default function ChatPage() {
 
   const searchMessages = searchMessagesData?.data || [];
 
-  // 搜索用户
+  // 搜索用户（用于创建群聊）
   const { data: searchUsersData } = useQuery<{ success: boolean; data: SearchUser[] }>({
     queryKey: ['/api/search/users', userSearchTerm],
     queryFn: userSearchTerm
@@ -125,6 +128,20 @@ export default function ChatPage() {
   });
 
   const searchUsers = searchUsersData?.data || [];
+
+  // 搜索用户（用于添加成员）
+  const { data: addMemberSearchData } = useQuery<{ success: boolean; data: SearchUser[] }>({
+    queryKey: ['/api/search/users', addMemberSearchTerm],
+    queryFn: addMemberSearchTerm
+      ? () => fetch(`/api/search/users?keyword=${encodeURIComponent(addMemberSearchTerm)}`).then(r => r.json())
+      : undefined,
+    enabled: !!addMemberSearchTerm && addMemberSearchTerm.length > 0,
+  });
+
+  // 过滤掉已在群聊中的成员
+  const addMemberSearchUsers = (addMemberSearchData?.data || []).filter(user => 
+    !selectedChat?.participants.some(p => p.userId === user.id)
+  );
 
   // 创建群聊
   const createGroupMutation = useMutation({
@@ -166,6 +183,26 @@ export default function ChatPage() {
     },
     onError: () => {
       toast({ title: '错误', description: '创建对话失败', variant: 'destructive' });
+    },
+  });
+
+  // 添加成员到群聊
+  const addMembersMutation = useMutation({
+    mutationFn: async ({ chatId, userIds }: { chatId: string; userIds: string[] }) => {
+      return await apiRequest('POST', `/api/chats/${chatId}/participants`, { userIds });
+    },
+    onSuccess: async () => {
+      // 刷新聊天列表并等待完成，确保成员列表更新
+      await queryClient.invalidateQueries({ queryKey: ['/api/chats'] });
+      await queryClient.refetchQueries({ queryKey: ['/api/chats'] });
+      
+      setShowAddMember(false);
+      setSelectedAddMembers([]);
+      setAddMemberSearchTerm('');
+      toast({ title: '成功', description: '成员添加成功' });
+    },
+    onError: (error: Error) => {
+      toast({ title: '错误', description: error.message || '添加成员失败', variant: 'destructive' });
     },
   });
 
@@ -301,6 +338,28 @@ export default function ChatPage() {
         ? prev.filter(id => id !== userId)
         : [...prev, userId]
     );
+  };
+
+  // 切换添加成员选择
+  const toggleAddMemberSelection = (userId: string) => {
+    setSelectedAddMembers(prev =>
+      prev.includes(userId)
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId]
+    );
+  };
+
+  // 处理添加成员
+  const handleAddMembers = () => {
+    if (!selectedChatId || selectedAddMembers.length === 0) {
+      toast({ title: '错误', description: '请选择要添加的成员', variant: 'destructive' });
+      return;
+    }
+    
+    addMembersMutation.mutate({
+      chatId: selectedChatId,
+      userIds: selectedAddMembers
+    });
   };
 
   // 过滤聊天列表 - 支持搜索消息内容
@@ -583,6 +642,64 @@ export default function ChatPage() {
                       <DialogHeader>
                         <DialogTitle>群成员 ({selectedChat.participants.length}人)</DialogTitle>
                       </DialogHeader>
+                      <Dialog open={showAddMember} onOpenChange={setShowAddMember}>
+                        <DialogTrigger asChild>
+                          <Button className="w-full mb-4" variant="outline" data-testid="button-add-member-trigger">
+                            <Plus className="h-4 w-4 mr-2" />
+                            添加成员
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>添加成员到群聊</DialogTitle>
+                          </DialogHeader>
+                          <div className="space-y-4">
+                            <div>
+                              <Label>搜索用户</Label>
+                              <Input
+                                placeholder="搜索用户..."
+                                value={addMemberSearchTerm}
+                                onChange={(e) => setAddMemberSearchTerm(e.target.value)}
+                                data-testid="input-search-add-members"
+                              />
+                            </div>
+                            <ScrollArea className="h-64">
+                              {addMemberSearchUsers.map((user) => (
+                                <div
+                                  key={user.id}
+                                  className="flex items-center gap-2 p-2 hover-elevate rounded"
+                                  data-testid={`add-member-item-${user.id}`}
+                                >
+                                  <Checkbox
+                                    checked={selectedAddMembers.includes(user.id)}
+                                    onCheckedChange={() => toggleAddMemberSelection(user.id)}
+                                    data-testid={`checkbox-add-member-${user.id}`}
+                                  />
+                                  <Avatar className="h-8 w-8">
+                                    <AvatarFallback>
+                                      {(user.nickname || user.name).charAt(0)}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div>
+                                    <div className="font-medium">{user.nickname || user.name}</div>
+                                    <div className="text-sm text-muted-foreground">
+                                      {user.position}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </ScrollArea>
+                            <Button
+                              onClick={handleAddMembers}
+                              disabled={selectedAddMembers.length === 0 || addMembersMutation.isPending}
+                              className="w-full"
+                              data-testid="button-confirm-add-members"
+                            >
+                              {addMembersMutation.isPending ? '添加中...' : `添加成员 (${selectedAddMembers.length}人)`}
+                            </Button>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
                       <ScrollArea className="h-96">
                         <div className="space-y-2">
                           {selectedChat.participants.map((participant) => (
