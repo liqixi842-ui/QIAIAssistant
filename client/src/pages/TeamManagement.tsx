@@ -409,7 +409,7 @@ export default function TeamManagement({ userRole: propUserRole, userName: propU
               
               return (
                 <TableRow key={member.id} data-testid={`row-member-${member.id}`}>
-                  <TableCell className="text-muted-foreground text-sm font-mono">{index + 1}</TableCell>
+                  <TableCell className="text-muted-foreground text-sm font-mono">{member.id}</TableCell>
                   <TableCell className="font-medium">{member.name}</TableCell>
                   <TableCell>
                     <Badge variant="outline">{member.role}</Badge>
