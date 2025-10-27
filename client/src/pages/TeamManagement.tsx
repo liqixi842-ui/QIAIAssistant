@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -55,8 +56,22 @@ interface TeamMember {
   equipment: EquipmentInfo;
 }
 
-// 不再使用虚构的mock数据，使用真实数据库用户
-const mockTeamMembers: TeamMember[] = [];
+interface ApiUser {
+  id: string;
+  username: string;
+  name: string;
+  nickname: string;
+  role: string;
+  supervisorId: string | null;
+  position?: string;
+  team?: string;
+  phone?: number;
+  computer?: number;
+  charger?: number;
+  dormitory?: string;
+  joinDate?: string;
+  wave?: string;
+}
 
 interface TeamManagementProps {
   userRole?: string;
@@ -66,9 +81,39 @@ interface TeamManagementProps {
 export default function TeamManagement({ userRole = '业务', userName = '张三' }: TeamManagementProps) {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>(mockTeamMembers);
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<EquipmentInfo>>({});
+
+  // 从API获取真实用户数据
+  const { data: usersData, isLoading } = useQuery<{ success: boolean; data: ApiUser[] }>({
+    queryKey: ['/api/users'],
+  });
+
+  // 将API用户数据转换为TeamMember格式
+  const apiUsers = usersData?.data || [];
+  const allUsers = usersData?.data || [];
+
+  // 创建ID到昵称的映射，用于查找上级姓名
+  const userIdToName = new Map<string, string>();
+  allUsers.forEach(user => {
+    userIdToName.set(user.id, user.nickname || user.name);
+  });
+
+  const teamMembers: TeamMember[] = apiUsers.map(user => ({
+    id: user.id,
+    name: user.nickname || user.name,
+    role: user.role,
+    manager: user.supervisorId ? (userIdToName.get(user.supervisorId) || '') : '',
+    status: 'active' as const,
+    equipment: {
+      phoneCount: user.phone || 0,
+      computerCount: user.computer || 0,
+      chargerCount: user.charger || 0,
+      dormitory: user.dormitory || '',
+      joinDate: user.joinDate || '',
+      waveNumber: user.wave || '',
+    }
+  }));
   
   const [selectedManager, setSelectedManager] = useState<string>('all');
   const [selectedDirector, setSelectedDirector] = useState<string>('all');
@@ -132,16 +177,10 @@ export default function TeamManagement({ userRole = '业务', userName = '张三
   };
 
   const saveEdit = (memberId: string) => {
-    setTeamMembers(prev =>
-      prev.map(m =>
-        m.id === memberId
-          ? { ...m, equipment: { ...m.equipment, ...editForm } }
-          : m
-      )
-    );
+    // TODO: 调用API更新用户设备信息
     toast({
-      title: "保存成功",
-      description: "设备信息已更新",
+      title: "功能开发中",
+      description: "设备信息更新功能正在开发中",
     });
     setEditingMemberId(null);
     setEditForm({});
@@ -204,10 +243,10 @@ export default function TeamManagement({ userRole = '业务', userName = '张三
   const handleDeleteMember = () => {
     if (!selectedMemberId) return;
     
-    setTeamMembers(prev => prev.filter(m => m.id !== selectedMemberId));
+    // TODO: 调用API删除用户
     toast({
-      title: "账户已删除",
-      description: "成员账户已成功删除",
+      title: "功能开发中",
+      description: "删除用户功能正在开发中",
     });
     setShowDeleteDialog(false);
     setSelectedMemberId(null);

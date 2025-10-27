@@ -13,14 +13,23 @@ export default function RegisterPage() {
   const [formData, setFormData] = useState({
     username: '',
     password: '',
-    name: '',
     nickname: '',
     role: '',
-    supervisorId: '7' // 默认上级ID为7（主管）
+    supervisorId: ''
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // 严格验证所有必填字段
+    if (!formData.username || !formData.password || !formData.nickname || !formData.role || !formData.supervisorId) {
+      toast({
+        title: "注册失败",
+        description: "请填写所有必填字段（用户名、密码、花名、职位、上级ID）",
+        variant: "destructive"
+      });
+      return;
+    }
     
     // 禁止注册主管角色
     if (formData.role === '主管') {
@@ -39,8 +48,8 @@ export default function RegisterPage() {
         body: JSON.stringify({
           username: formData.username,
           password: formData.password,
-          name: formData.name,
-          nickname: formData.nickname || formData.name,
+          name: formData.nickname, // 真实姓名使用花名
+          nickname: formData.nickname,
           role: formData.role,
           supervisorId: formData.supervisorId
         })
@@ -69,8 +78,6 @@ export default function RegisterPage() {
     }
   };
 
-  const isDirector = formData.role === '总监';
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md p-8 space-y-6">
@@ -82,7 +89,7 @@ export default function RegisterPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
             type="text"
-            placeholder="用户名"
+            placeholder="用户名 *"
             value={formData.username}
             onChange={(e) => setFormData({ ...formData, username: e.target.value })}
             data-testid="input-username"
@@ -90,7 +97,7 @@ export default function RegisterPage() {
           />
           <Input
             type="password"
-            placeholder="密码（字符+数字混合）"
+            placeholder="密码 *"
             value={formData.password}
             onChange={(e) => setFormData({ ...formData, password: e.target.value })}
             data-testid="input-password"
@@ -98,25 +105,19 @@ export default function RegisterPage() {
           />
           <Input
             type="text"
-            placeholder="真实姓名"
-            value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            data-testid="input-name"
-            required
-          />
-          <Input
-            type="text"
-            placeholder="花名（可选）"
+            placeholder="花名 *"
             value={formData.nickname}
             onChange={(e) => setFormData({ ...formData, nickname: e.target.value })}
             data-testid="input-nickname"
+            required
           />
           <Select
             value={formData.role}
             onValueChange={(value) => setFormData({ ...formData, role: value })}
+            required
           >
             <SelectTrigger data-testid="select-role">
-              <SelectValue placeholder="选择角色" />
+              <SelectValue placeholder="选择职位 *" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="总监">总监</SelectItem>
@@ -125,21 +126,14 @@ export default function RegisterPage() {
               <SelectItem value="后勤">后勤</SelectItem>
             </SelectContent>
           </Select>
-          {isDirector && (
-            <div className="text-sm text-muted-foreground p-2 bg-muted rounded-md">
-              总监账号的上级ID已自动设置为 7（主管-七喜）
-            </div>
-          )}
-          {!isDirector && formData.role && (
-            <Input
-              type="text"
-              placeholder="上级ID（填写您的直属上级ID）"
-              value={formData.supervisorId}
-              onChange={(e) => setFormData({ ...formData, supervisorId: e.target.value })}
-              data-testid="input-supervisor-id"
-              required
-            />
-          )}
+          <Input
+            type="text"
+            placeholder="上级ID *（填写您的直属上级ID，总监填7）"
+            value={formData.supervisorId}
+            onChange={(e) => setFormData({ ...formData, supervisorId: e.target.value })}
+            data-testid="input-supervisor-id"
+            required
+          />
           <div className="flex gap-3">
             <Button
               type="submit"

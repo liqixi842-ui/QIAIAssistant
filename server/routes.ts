@@ -112,42 +112,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { username, password, name, nickname, role, supervisorId } = req.body;
 
-      // 验证必填字段
-      if (!username || !password || !name || !role) {
-        return res.status(400).json({ error: "缺少必填字段" });
+      // 严格验证所有5个必填字段（防止空字符串和纯空格）
+      if (!username?.trim() || !password?.trim() || !nickname?.trim() || !role?.trim() || !supervisorId?.trim()) {
+        return res.status(400).json({ 
+          error: "请填写所有必填字段（用户名、密码、花名、职位、上级ID）" 
+        });
       }
 
+      // Trim所有输入
+      const trimmedUsername = username.trim();
+      const trimmedPassword = password.trim();
+      const trimmedNickname = nickname.trim();
+      const trimmedRole = role.trim();
+      const trimmedSupervisorId = supervisorId.trim();
+
       // 禁止注册主管角色
-      if (role === "主管") {
+      if (trimmedRole === "主管") {
         return res.status(403).json({ error: "主管账号不可注册" });
       }
 
       // 检查用户名是否已存在
-      const existingUser = await storage.getUserByUsername(username);
+      const existingUser = await storage.getUserByUsername(trimmedUsername);
       if (existingUser) {
         return res.status(409).json({ error: "用户名已存在" });
       }
 
-      // 强制总监的上级ID为7（主管）
-      let finalSupervisorId = supervisorId;
-      if (role === "总监") {
-        finalSupervisorId = "7";
-      } else {
-        // 其他角色必须提供上级ID
-        if (!supervisorId) {
-          return res.status(400).json({ error: "请填写上级ID" });
-        }
-        finalSupervisorId = supervisorId;
-      }
-
-      // 创建用户
+      // 创建用户（使用trim后的值）
       const user = await storage.createUser({
-        username,
-        password, // 注意：实际生产环境应使用bcrypt等加密
-        name,
-        nickname,
-        role,
-        supervisorId: finalSupervisorId,
+        username: trimmedUsername,
+        password: trimmedPassword, // 注意：实际生产环境应使用bcrypt等加密
+        name: name?.trim() || trimmedNickname, // 如果name为空，使用nickname
+        nickname: trimmedNickname,
+        role: trimmedRole,
+        supervisorId: trimmedSupervisorId,
       });
 
       res.json({ 
@@ -157,7 +154,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           id: user.id,
           username: user.username,
           name: user.name,
-          role: user.role
+          nickname: user.nickname,
+          role: user.role,
+          supervisorId: user.supervisorId
         }
       });
     } catch (error) {
