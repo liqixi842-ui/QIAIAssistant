@@ -134,6 +134,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.sendFile(filePath);
   });
 
+  app.get("/deploy/register-page", async (req, res) => {
+    const token = req.query.token;
+    if (token !== "deploy2025") {
+      return res.status(403).send("Forbidden");
+    }
+    
+    const fs = await import('fs');
+    const path = await import('path');
+    const filePath = path.resolve(import.meta.dirname, '..', 'client', 'src', 'pages', 'RegisterPage.tsx');
+    
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Content-Disposition', 'attachment; filename="RegisterPage.tsx"');
+    res.sendFile(filePath);
+  });
+
+  app.get("/deploy/team-page", async (req, res) => {
+    const token = req.query.token;
+    if (token !== "deploy2025") {
+      return res.status(403).send("Forbidden");
+    }
+    
+    const fs = await import('fs');
+    const path = await import('path');
+    const filePath = path.resolve(import.meta.dirname, '..', 'client', 'src', 'pages', 'TeamManagement.tsx');
+    
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Content-Disposition', 'attachment; filename="TeamManagement.tsx"');
+    res.sendFile(filePath);
+  });
+
   // ============================================
   // 认证 API 路由
   // ============================================
