@@ -1,21 +1,61 @@
-# 🚀 聊天室隔离修复 - 生产环境部署指南
+# 🚀 动「QI」来 1.0 聊天模块 - 生产部署指南
 
-## 📋 修复概述
+## 📋 版本概述
 
-**问题**: 聊天室A的消息会出现在聊天室B中（消息串台bug）
+**版本**: 1.0 (聊天模块完整重构)  
+**服务器**: 172.93.32.222  
+**路径**: /var/www/dongqilai  
+**域名**: https://app.detusts.com  
+**数据库**: PostgreSQL (Neon)  
+**部署时间**: 预计30-45分钟  
 
-**解决方案**: 完整的端到端chatId隔离系统
-- ✅ 数据库新增chat_id列
-- ✅ 后端API支持chatId过滤
-- ✅ WebSocket消息路由隔离
-- ✅ 前端正确加载/显示分离的聊天历史
-- ✅ 通过3轮架构师审查
+---
 
-**影响范围**: 4个关键文件
-1. `shared/schema.ts` - Schema定义
-2. `server/storage.ts` - 数据访问层
-3. `server/routes.ts` - API路由和WebSocket
-4. `client/src/pages/ChatPage.tsx` - 前端聊天页面
+## 🎯 核心功能
+
+1. ✅ **多聊天室架构** - 群聊、私聊、聊天室列表管理
+2. ✅ **群组管理** - 创建群组、添加成员、权限控制（owner/admin/member）
+3. ✅ **搜索功能** - 搜索用户、搜索聊天记录（模糊匹配姓名/ID/内容）
+4. ✅ **消息持久化** - 3天以上历史记录保留，数据库存储
+5. ✅ **安全隔离** - 严格的成员权限检查，WebSocket消息只发送给聊天室成员
+6. ✅ **实时通信** - WebSocket支持，多聊天室消息隔离
+
+**架构师审查**: ✅ 通过（所有安全检查就绪）
+
+---
+
+## 📦 数据库Schema变更
+
+### 新增表
+
+**1. chats（聊天室表）**
+```sql
+CREATE TABLE chats (
+  id VARCHAR PRIMARY KEY,
+  type VARCHAR NOT NULL CHECK (type IN ('group', 'direct')),
+  name VARCHAR NOT NULL,
+  created_by VARCHAR NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+**2. chat_participants（聊天室成员表）**
+```sql
+CREATE TABLE chat_participants (
+  chat_id VARCHAR NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+  user_id VARCHAR NOT NULL,
+  role VARCHAR NOT NULL CHECK (role IN ('owner', 'admin', 'member')),
+  joined_at TIMESTAMP DEFAULT NOW(),
+  PRIMARY KEY (chat_id, user_id)
+);
+```
+
+### 修改表
+
+**chat_messages（聊天消息表）**
+- 新增字段: `chat_id VARCHAR NOT NULL DEFAULT '1'`
+- 新增外键: `fk_chat_messages_chat_id` → `chats(id)`
+- 新增索引: `idx_chat_messages_chat_id`
 
 ---
 
@@ -32,80 +72,94 @@ git config --global user.email "your@email.com"
 git config --global user.name "Your Name"
 
 # 添加所有修改
-git add shared/schema.ts server/storage.ts server/routes.ts client/src/pages/ChatPage.tsx replit.md
+git add shared/schema.ts server/storage.ts server/routes.ts \
+  client/src/pages/ChatPage.tsx deployment_v1.0.sql replit.md
 
 # 提交修改
-git commit -m "🔥 Fix critical chat room isolation bug - Add chatId filtering end-to-end"
+git commit -m "🚀 Release v1.0: Complete chat module with groups, private chat, search & security"
 
 # 推送到GitHub (假设remote已配置)
 git push origin main
 ```
 
-### 步骤2: 在服务器上拉取并部署
+### 步骤2: 在服务器上部署
 
-SSH连接到服务器 `172.93.32.222`，然后执行：
+SSH连接到服务器 `172.93.32.222`：
+
+```bash
+ssh root@172.93.32.222
+```
+
+执行以下部署脚本：
 
 ```bash
 #!/bin/bash
 set -e  # 遇到错误立即停止
 
 echo "=========================================="
-echo "  动「QI」来 - 聊天隔离修复部署"
+echo "  动「QI」来 1.0 聊天模块部署"
 echo "=========================================="
 echo ""
 
-# 1. 进入项目目录
-cd /var/www/dongqilai
+# 配置变量
+APP_DIR="/var/www/dongqilai"
+BACKUP_DIR="/var/backups/dongqilai"
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+# 1. 创建备份目录
+echo "📦 1/8 创建备份目录..."
+mkdir -p "$BACKUP_DIR"
 
 # 2. 备份当前代码
-echo "📦 1/5 备份当前代码..."
-BACKUP_DIR="backup_$(date +%Y%m%d_%H%M%S)"
-mkdir -p "$BACKUP_DIR"
-cp -r shared server client "$BACKUP_DIR/"
-echo "✅ 备份完成: $BACKUP_DIR"
+echo "📦 2/8 备份当前代码..."
+cd "$APP_DIR"
+tar -czf "$BACKUP_DIR/code_backup_$TIMESTAMP.tar.gz" \
+  --exclude='node_modules' \
+  --exclude='dist' \
+  --exclude='.git' \
+  .
+echo "✅ 代码备份: $BACKUP_DIR/code_backup_$TIMESTAMP.tar.gz"
 echo ""
 
-# 3. 拉取最新代码
-echo "📥 2/5 从GitHub拉取最新代码..."
+# 3. 备份数据库
+echo "🗄️  3/8 备份数据库..."
+pg_dump "$DATABASE_URL" > "$BACKUP_DIR/db_backup_$TIMESTAMP.sql"
+echo "✅ 数据库备份: $BACKUP_DIR/db_backup_$TIMESTAMP.sql"
+echo ""
+
+# 4. 停止应用
+echo "🛑 4/8 停止PM2应用..."
+pm2 stop dongqilai || echo "应用未运行，跳过停止步骤"
+echo ""
+
+# 5. 拉取最新代码
+echo "📥 5/8 从GitHub拉取最新代码..."
 git fetch origin
-git reset --hard origin/main  # 强制同步到远程最新版本
+git reset --hard origin/main
 echo "✅ 代码更新完成"
 echo ""
 
-# 4. 数据库迁移 - 添加chat_id列
-echo "🗄️  3/5 执行数据库迁移..."
-PGPASSWORD=$PGPASSWORD psql -h $PGHOST -U $PGUSER -d $PGDATABASE -p $PGPORT << 'SQL_MIGRATION'
--- 添加chat_id列（如果不存在）
-ALTER TABLE chat_messages 
-ADD COLUMN IF NOT EXISTS chat_id VARCHAR NOT NULL DEFAULT '1';
-
--- 验证列已添加
-SELECT column_name, data_type, is_nullable, column_default 
-FROM information_schema.columns 
-WHERE table_name = 'chat_messages' AND column_name = 'chat_id';
-SQL_MIGRATION
-
+# 6. 执行数据库迁移
+echo "🗄️  6/8 执行数据库迁移..."
+psql "$DATABASE_URL" -f deployment_v1.0.sql
 echo "✅ 数据库迁移完成"
 echo ""
 
-# 5. 安装依赖（如果有新依赖）
-echo "📦 4/5 检查并安装依赖..."
+# 7. 重新构建应用
+echo "🔨 7/8 重新构建应用..."
 npm install
-echo "✅ 依赖安装完成"
-echo ""
-
-# 6. 重新构建并重启
-echo "🔨 5/5 重新构建应用..."
 npm run build
-
-echo "🔄 重启PM2进程..."
-pm2 restart dongqilai-crm
-
+echo "✅ 构建完成"
 echo ""
+
+# 8. 重启应用
+echo "🔄 8/8 重启PM2应用..."
+pm2 start ecosystem.config.cjs || pm2 restart dongqilai
+pm2 save
+echo ""
+
 echo "⏳ 等待应用启动..."
-sleep 3
-
-echo ""
+sleep 5
 pm2 status
 echo ""
 
@@ -113,27 +167,25 @@ echo "=========================================="
 echo "  ✅ 部署完成！"
 echo "=========================================="
 echo ""
-echo "📋 接下来的验证步骤："
+echo "📋 验证步骤："
+echo "1. 访问 https://app.detusts.com"
+echo "2. 登录账号: qixi / hu626388"
+echo "3. 进入团队聊天页面"
+echo "4. 测试以下功能："
+echo "   - 查看"销售团队"聊天室"
+echo "   - 发送消息并验证持久化"
+echo "   - 创建新群组"
+echo "   - 创建私聊"
+echo "   - 搜索用户和消息"
 echo ""
-echo "1. 🧹 清除浏览器缓存"
-echo "   - 按 Ctrl+Shift+Delete"
-echo "   - 选择"全部时间""
-echo "   - 勾选"缓存的图片和文件""
-echo "   - 点击"清除数据""
+echo "🔧 故障排查："
+echo "   pm2 logs dongqilai --lines 100"
 echo ""
-echo "2. 🔄 关闭所有浏览器窗口并重新打开"
-echo ""
-echo "3. 🌐 访问 http://172.93.32.222:5000"
-echo ""
-echo "4. ✅ 测试步骤："
-echo "   a) 登录系统"
-echo "   b) 进入"销售团队"群聊"
-echo "   c) 发送测试消息（如"测试1"）"
-echo "   d) 切换到其他联系人聊天"
-echo "   e) 确认没有看到"测试1"消息"
-echo "   f) 切换回"销售团队""
-echo "   g) 确认"测试1"消息仍然存在"
-echo ""
+echo "🔄 如需回滚："
+echo "   cd $APP_DIR"
+echo "   tar -xzf $BACKUP_DIR/code_backup_$TIMESTAMP.tar.gz"
+echo "   psql \$DATABASE_URL < $BACKUP_DIR/db_backup_$TIMESTAMP.sql"
+echo "   pm2 restart dongqilai"
 echo "=========================================="
 ```
 
@@ -141,61 +193,300 @@ echo "=========================================="
 
 ## 🔧 备选方案：手动部署（不使用Git）
 
-如果GitHub访问有问题，可以使用SFTP/SCP手动复制文件：
-
 ### 文件传输清单
 
-从Replit复制以下4个文件到服务器对应位置：
+需要上传以下文件到服务器：
 
-1. **`shared/schema.ts`** 
-   - 本地路径: `/home/runner/workspace/shared/schema.ts`
-   - 服务器路径: `/var/www/dongqilai/shared/schema.ts`
+1. **`deployment_v1.0.sql`** → `/var/www/dongqilai/deployment_v1.0.sql`
+2. **`shared/schema.ts`** → `/var/www/dongqilai/shared/schema.ts`
+3. **`server/storage.ts`** → `/var/www/dongqilai/server/storage.ts`
+4. **`server/routes.ts`** → `/var/www/dongqilai/server/routes.ts`
+5. **`client/src/pages/ChatPage.tsx`** → `/var/www/dongqilai/client/src/pages/ChatPage.tsx`
 
-2. **`server/storage.ts`**
-   - 本地路径: `/home/runner/workspace/server/storage.ts`
-   - 服务器路径: `/var/www/dongqilai/server/storage.ts`
+### 使用SCP传输
 
-3. **`server/routes.ts`**
-   - 本地路径: `/home/runner/workspace/server/routes.ts`
-   - 服务器路径: `/var/www/dongqilai/server/routes.ts`
-
-4. **`client/src/pages/ChatPage.tsx`**
-   - 本地路径: `/home/runner/workspace/client/src/pages/ChatPage.tsx`
-   - 服务器路径: `/var/www/dongqilai/client/src/pages/ChatPage.tsx`
-
-### 使用SCP传输（从本地Windows PowerShell）
-
-```powershell
-# 注意：需要先从Replit下载这4个文件到本地
-
+```bash
+# 从本地机器执行（先从Replit下载文件到本地）
+scp deployment_v1.0.sql root@172.93.32.222:/var/www/dongqilai/
 scp shared/schema.ts root@172.93.32.222:/var/www/dongqilai/shared/
 scp server/storage.ts root@172.93.32.222:/var/www/dongqilai/server/
 scp server/routes.ts root@172.93.32.222:/var/www/dongqilai/server/
 scp client/src/pages/ChatPage.tsx root@172.93.32.222:/var/www/dongqilai/client/src/pages/
 ```
 
-然后在服务器上执行数据库迁移和重启步骤（见上方"步骤2"的第4、6步骤）。
+### 在服务器上执行部署
+
+```bash
+cd /var/www/dongqilai
+
+# 备份
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+mkdir -p /var/backups/dongqilai
+tar -czf /var/backups/dongqilai/backup_$TIMESTAMP.tar.gz \
+  --exclude='node_modules' --exclude='dist' .
+pg_dump "$DATABASE_URL" > /var/backups/dongqilai/db_$TIMESTAMP.sql
+
+# 停止应用
+pm2 stop dongqilai
+
+# 执行数据库迁移
+psql "$DATABASE_URL" -f deployment_v1.0.sql
+
+# 重新构建
+npm install
+npm run build
+
+# 重启应用
+pm2 restart dongqilai
+pm2 save
+```
 
 ---
 
-## 📊 数据库迁移SQL（独立执行）
+## ✅ 部署验证
 
-如果只需要执行数据库迁移：
+### 1. 基础功能检查
 
-```sql
--- 添加chat_id列
-ALTER TABLE chat_messages 
-ADD COLUMN IF NOT EXISTS chat_id VARCHAR NOT NULL DEFAULT '1';
+访问 https://app.detusts.com，使用账号 `qixi / hu626388` 登录
 
--- 验证迁移成功
-SELECT column_name, data_type, is_nullable, column_default 
-FROM information_schema.columns 
-WHERE table_name = 'chat_messages' AND column_name = 'chat_id';
+### 2. 聊天功能完整测试
 
--- 应该看到:
--- column_name | data_type         | is_nullable | column_default
--- chat_id     | character varying | NO          | '1'::character varying
+#### 测试1：默认团队聊天室
 ```
+1. 点击侧边栏"团队聊天"
+2. 应看到"销售团队"聊天室
+3. 发送测试消息："测试消息1"
+4. 刷新页面
+5. 验证消息仍然存在（持久化成功）
+```
+
+#### 测试2：创建群组
+```
+1. 点击"创建群聊"按钮
+2. 输入群组名称："测试群组"
+3. 搜索并添加成员（至少2人）
+4. 点击"创建"
+5. 验证新群组出现在左侧列表
+6. 进入群组，发送消息
+7. 验证消息只显示在该群组中
+```
+
+#### 测试3：私聊功能
+```
+1. 点击"新私聊"按钮
+2. 搜索用户（输入昵称或ID）
+3. 选择用户，创建私聊
+4. 发送私聊消息
+5. 切换到其他聊天室
+6. 切换回私聊
+7. 验证私聊消息仍然存在
+```
+
+#### 测试4：搜索功能
+```
+1. 在搜索框输入用户昵称
+2. 验证用户搜索结果正确
+3. 输入消息关键词
+4. 验证消息搜索结果正确（只显示有权限的聊天室消息）
+```
+
+#### 测试5：消息隔离验证
+```
+1. 在"销售团队"发送消息A
+2. 切换到私聊，发送消息B
+3. 切换回"销售团队"
+4. 验证只看到消息A，不显示消息B
+5. 刷新页面
+6. 再次验证消息隔离正确
+```
+
+### 3. 安全验证
+
+使用Chrome DevTools检查WebSocket消息：
+
+```
+1. F12打开开发者工具
+2. 切换到Network → WS标签
+3. 点击WebSocket连接
+4. 在"销售团队"发送消息
+5. 查看WebSocket消息，验证包含chatId字段
+6. 切换到私聊，发送消息
+7. 验证chatId不同，消息隔离
+```
+
+### 4. 数据库验证
+
+```bash
+# SSH登录服务器
+ssh root@172.93.32.222
+
+# 检查新表是否创建
+psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM chats;"
+psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM chat_participants;"
+
+# 检查默认聊天室
+psql "$DATABASE_URL" -c "SELECT * FROM chats WHERE id = '1';"
+
+# 检查成员
+psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM chat_participants WHERE chat_id = '1';"
+
+# 检查消息表是否有chat_id字段
+psql "$DATABASE_URL" -c "\d chat_messages"
+```
+
+---
+
+## 🐛 故障排查
+
+### 问题1：数据库连接失败
+
+**症状**: `Error: connect ECONNREFUSED`
+
+**解决**:
+```bash
+# 检查DATABASE_URL
+echo $DATABASE_URL
+
+# 测试连接
+psql "$DATABASE_URL" -c "SELECT 1;"
+
+# 如果失败，检查Neon数据库状态
+```
+
+### 问题2：默认聊天室不存在
+
+**症状**: 聊天列表为空
+
+**解决**:
+```bash
+# 手动创建默认聊天室
+psql "$DATABASE_URL" << 'SQL'
+INSERT INTO chats (id, type, name, created_by) 
+VALUES ('1', 'group', '销售团队', '7')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO chat_participants (chat_id, user_id, role)
+SELECT '1', id::VARCHAR, 
+  CASE WHEN id = 7 THEN 'owner' ELSE 'member' END
+FROM users;
+SQL
+```
+
+### 问题3：WebSocket连接失败
+
+**症状**: 消息发送后不显示，控制台显示WebSocket错误
+
+**解决**:
+```bash
+# 检查Nginx配置（如果使用反向代理）
+cat /etc/nginx/sites-available/dongqilai
+
+# WebSocket必须配置以下头部：
+# proxy_http_version 1.1;
+# proxy_set_header Upgrade $http_upgrade;
+# proxy_set_header Connection "upgrade";
+
+# 重启Nginx
+nginx -t && nginx -s reload
+```
+
+### 问题4：消息不持久化
+
+**症状**: 刷新页面后消息消失
+
+**解决**:
+```bash
+# 检查chat_messages表
+psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM chat_messages;"
+
+# 检查chat_id字段
+psql "$DATABASE_URL" -c "SELECT chat_id, content FROM chat_messages ORDER BY timestamp DESC LIMIT 5;"
+
+# 如果chat_id字段不存在，重新执行迁移
+psql "$DATABASE_URL" -f deployment_v1.0.sql
+```
+
+### 问题5：PM2启动失败
+
+**症状**: `pm2 status` 显示应用为 `errored`
+
+**解决**:
+```bash
+# 查看详细错误日志
+pm2 logs dongqilai --lines 100
+
+# 常见错误：
+# - TypeScript编译错误：检查文件是否正确上传
+# - 端口占用：pm2 delete dongqilai && pm2 start ecosystem.config.cjs
+# - 环境变量缺失：检查.env文件
+```
+
+---
+
+## 🔄 回滚步骤
+
+如果部署失败，执行以下回滚：
+
+```bash
+cd /var/www/dongqilai
+
+# 停止应用
+pm2 stop dongqilai
+
+# 恢复代码（替换为实际备份文件名）
+tar -xzf /var/backups/dongqilai/code_backup_YYYYMMDD_HHMMSS.tar.gz
+
+# 恢复数据库（替换为实际备份文件名）
+psql "$DATABASE_URL" < /var/backups/dongqilai/db_backup_YYYYMMDD_HHMMSS.sql
+
+# 重新构建并启动
+npm run build
+pm2 restart dongqilai
+pm2 save
+```
+
+---
+
+## 📊 关键文件变更摘要
+
+### 1. shared/schema.ts
+- 新增 `chats` 表定义
+- 新增 `chatParticipants` 表定义
+- 更新 `chatMessages` 表（添加 `chatId` 字段）
+- 新增相关insert/select类型
+
+### 2. server/storage.ts
+- 新增 `IStorage` 接口方法：
+  - `getUserChats()` - 获取用户聊天室列表
+  - `createChat()` - 创建聊天室
+  - `getOrCreateDirectChat()` - 获取或创建私聊
+  - `addChatParticipant()` - 添加成员
+  - `getChatParticipants()` - 获取成员列表
+  - `isUserInChat()` - 检查成员资格
+  - `searchUsers()` - 搜索用户
+  - `searchChatMessages()` - 搜索消息
+  - `getChatMessagesByChatId()` - 按chatId获取消息
+- 完整的 `PostgresStorage` 实现
+
+### 3. server/routes.ts
+- 新增6个API端点：
+  - `GET /api/chats` - 获取聊天列表
+  - `POST /api/chats/create` - 创建群组
+  - `POST /api/chats/direct` - 创建私聊
+  - `POST /api/chats/:chatId/participants` - 添加成员
+  - `GET /api/search/users` - 搜索用户
+  - `GET /api/search/messages` - 搜索消息
+- 更新 `GET /api/chat/messages` - 添加成员权限检查
+- 更新WebSocket消息处理 - 添加成员过滤
+- 新增 `broadcastToParticipants()` 函数
+
+### 4. client/src/pages/ChatPage.tsx
+- 完全移除mock数据
+- 使用React Query获取真实数据
+- 实现创建群组UI对话框
+- 实现用户搜索和消息搜索
+- 实现WebSocket实时消息接收
+- 实现多聊天室切换和消息隔离
 
 ---
 
@@ -204,48 +495,35 @@ WHERE table_name = 'chat_messages' AND column_name = 'chat_id';
 1. **必须清除浏览器缓存**: 旧的JavaScript文件会导致功能异常
 2. **关闭所有标签页**: 确保加载的是新版本代码
 3. **首次测试建议**: 使用隐私/无痕模式打开，避免缓存干扰
-4. **验证数据库**: 确认chat_id列已添加后再重启应用
+4. **验证数据库**: 确认所有表和字段创建成功后再测试功能
+5. **WebSocket连接**: 确保Nginx/反向代理正确配置WebSocket支持
 
 ---
 
-## 🐛 故障排查
+## ✅ 部署成功检查清单
 
-### 问题1: PM2启动失败
-```bash
-# 查看详细错误日志
-pm2 logs dongqilai-crm --lines 50
+- [ ] 备份已创建（代码 + 数据库）
+- [ ] 代码文件已更新（4个文件）
+- [ ] 数据库迁移成功执行（3个表）
+- [ ] 应用成功构建（npm run build）
+- [ ] PM2进程正常运行
+- [ ] "销售团队"聊天室存在
+- [ ] 发送消息功能正常
+- [ ] 消息持久化验证通过
+- [ ] 创建群组功能正常
+- [ ] 私聊功能正常
+- [ ] 搜索用户功能正常
+- [ ] 搜索消息功能正常
+- [ ] 多聊天室隔离验证通过
+- [ ] WebSocket实时消息正常
+- [ ] 监控日志无错误
 
-# 如果是TypeScript编译错误，检查文件是否正确复制
-ls -lh shared/schema.ts server/storage.ts server/routes.ts client/src/pages/ChatPage.tsx
-```
-
-### 问题2: 数据库迁移失败
-```bash
-# 检查chat_messages表结构
-PGPASSWORD=$PGPASSWORD psql -h $PGHOST -U $PGUSER -d $PGDATABASE -p $PGPORT -c "\d chat_messages"
-
-# 如果chat_id列不存在，手动添加
-PGPASSWORD=$PGPASSWORD psql -h $PGHOST -U $PGUSER -d $PGDATABASE -p $PGPORT -c "ALTER TABLE chat_messages ADD COLUMN chat_id VARCHAR NOT NULL DEFAULT '1';"
-```
-
-### 问题3: 浏览器仍显示旧界面
-- 强制刷新: `Ctrl + F5` (Windows) 或 `Cmd + Shift + R` (Mac)
-- 清除站点数据: Chrome DevTools → Application → Clear Storage → Clear site data
-- 使用无痕模式测试
+**全部完成后，部署成功！** 🚀
 
 ---
 
-## ✅ 验证成功的标志
-
-1. 在"销售团队"发送消息后，消息正常显示
-2. 切换到其他联系人，不会看到团队消息
-3. 切换回"销售团队"，之前的消息仍然存在
-4. 刷新页面后，团队聊天历史正确加载
-5. PM2状态显示应用运行正常，无频繁重启
-
----
-
-**部署日期**: 2025-01-26  
-**修复版本**: v1.0.1-chatfix  
-**架构师审查**: ✅ 通过 (3轮)  
-**预计部署时间**: 5-10分钟
+**部署日期**: 2025-01-27  
+**版本**: 1.0  
+**架构师审查**: ✅ 通过  
+**安全级别**: ✅ 所有端点成员权限检查就绪  
+**预计部署时间**: 30-45分钟
