@@ -55,188 +55,8 @@ interface TeamMember {
   equipment: EquipmentInfo;
 }
 
-const mockTeamMembers: TeamMember[] = [
-  {
-    id: '0',
-    name: '李主管',
-    role: '主管',
-    manager: '',
-    status: 'active',
-    equipment: {
-      phoneCount: 2,
-      computerCount: 2,
-      chargerCount: 3,
-      dormitory: 'C栋501',
-      joinDate: '2022-01-01',
-      waveNumber: '创始团队'
-    }
-  },
-  {
-    id: '1',
-    name: '赵总监',
-    role: '总监',
-    manager: '李主管',
-    status: 'active',
-    equipment: {
-      phoneCount: 2,
-      computerCount: 2,
-      chargerCount: 3,
-      dormitory: 'B栋301',
-      joinDate: '2023-01-01',
-      waveNumber: '创始团队'
-    }
-  },
-  {
-    id: '2',
-    name: '钱总监',
-    role: '总监',
-    manager: '李主管',
-    status: 'active',
-    equipment: {
-      phoneCount: 1,
-      computerCount: 2,
-      chargerCount: 2,
-      dormitory: 'B栋302',
-      joinDate: '2023-02-01',
-      waveNumber: '创始团队'
-    }
-  },
-  {
-    id: '3',
-    name: '王经理',
-    role: '经理',
-    manager: '赵总监',
-    status: 'active',
-    equipment: {
-      phoneCount: 1,
-      computerCount: 1,
-      chargerCount: 2,
-      dormitory: 'B栋101',
-      joinDate: '2023-06-10',
-      waveNumber: '第一波'
-    }
-  },
-  {
-    id: '4',
-    name: '孙经理',
-    role: '经理',
-    manager: '赵总监',
-    status: 'active',
-    equipment: {
-      phoneCount: 2,
-      computerCount: 1,
-      chargerCount: 3,
-      dormitory: 'B栋102',
-      joinDate: '2023-07-01',
-      waveNumber: '第一波'
-    }
-  },
-  {
-    id: '5',
-    name: '周经理',
-    role: '经理',
-    manager: '钱总监',
-    status: 'active',
-    equipment: {
-      phoneCount: 1,
-      computerCount: 1,
-      chargerCount: 2,
-      dormitory: 'B栋103',
-      joinDate: '2023-08-15',
-      waveNumber: '第二波'
-    }
-  },
-  {
-    id: '6',
-    name: '张三',
-    role: '业务',
-    manager: '王经理',
-    status: 'active',
-    equipment: {
-      phoneCount: 2,
-      computerCount: 1,
-      chargerCount: 3,
-      dormitory: 'A栋201',
-      joinDate: '2024-01-15',
-      waveNumber: '第一波'
-    }
-  },
-  {
-    id: '7',
-    name: '李四',
-    role: '业务',
-    manager: '王经理',
-    status: 'active',
-    equipment: {
-      phoneCount: 1,
-      computerCount: 1,
-      chargerCount: 2,
-      dormitory: 'A栋202',
-      joinDate: '2024-02-01',
-      waveNumber: '第一波'
-    }
-  },
-  {
-    id: '8',
-    name: '王五',
-    role: '业务',
-    manager: '孙经理',
-    status: 'active',
-    equipment: {
-      phoneCount: 1,
-      computerCount: 1,
-      chargerCount: 2,
-      dormitory: 'A栋203',
-      joinDate: '2024-03-10',
-      waveNumber: '第二波'
-    }
-  },
-  {
-    id: '9',
-    name: '赵六',
-    role: '业务',
-    manager: '孙经理',
-    status: 'active',
-    equipment: {
-      phoneCount: 2,
-      computerCount: 1,
-      chargerCount: 3,
-      dormitory: 'A栋204',
-      joinDate: '2024-04-01',
-      waveNumber: '第二波'
-    }
-  },
-  {
-    id: '10',
-    name: '陈七',
-    role: '业务',
-    manager: '周经理',
-    status: 'active',
-    equipment: {
-      phoneCount: 1,
-      computerCount: 1,
-      chargerCount: 2,
-      dormitory: 'A栋205',
-      joinDate: '2024-05-15',
-      waveNumber: '第三波'
-    }
-  },
-  {
-    id: '11',
-    name: '刘八',
-    role: '后勤',
-    manager: '李主管',
-    status: 'active',
-    equipment: {
-      phoneCount: 1,
-      computerCount: 1,
-      chargerCount: 1,
-      dormitory: 'C栋101',
-      joinDate: '2023-12-01',
-      waveNumber: '创始团队'
-    }
-  }
-];
+// 不再使用虚构的mock数据，使用真实数据库用户
+const mockTeamMembers: TeamMember[] = [];
 
 interface TeamManagementProps {
   userRole?: string;
@@ -341,8 +161,9 @@ export default function TeamManagement({ userRole = '业务', userName = '张三
 
   const handleExport = () => {
     const csvContent = [
-      ['姓名', '角色', '业务隶属', '手机数量', '电脑数量', '充电桩数量', '宿舍', '入职日期', '波数', '状态'],
+      ['用户ID', '姓名', '角色', '业务隶属', '手机数量', '电脑数量', '充电桩数量', '宿舍', '入职日期', '波数', '状态'],
       ...filteredMembers.map(m => [
+        m.id,
         m.name,
         m.role,
         m.manager || '无',
@@ -478,6 +299,7 @@ export default function TeamManagement({ userRole = '业务', userName = '张三
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>用户ID</TableHead>
               <TableHead>姓名</TableHead>
               <TableHead>角色</TableHead>
               <TableHead>业务隶属</TableHead>
@@ -497,6 +319,7 @@ export default function TeamManagement({ userRole = '业务', userName = '张三
               
               return (
                 <TableRow key={member.id} data-testid={`row-member-${member.id}`}>
+                  <TableCell className="text-muted-foreground text-sm font-mono">{member.id}</TableCell>
                   <TableCell className="font-medium">{member.name}</TableCell>
                   <TableCell>
                     <Badge variant="outline">{member.role}</Badge>
