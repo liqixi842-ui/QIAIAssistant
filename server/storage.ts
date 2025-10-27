@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type Customer, type InsertCustomer, type Task, type InsertTask, type ChatMessage, type InsertChatMessage, type Chat, type InsertChat, type ChatParticipant, type InsertChatParticipant, users, customers, tasks, chatMessages, chats, chatParticipants } from "@shared/schema";
+import { type User, type InsertUser, type Customer, type InsertCustomer, type Task, type InsertTask, type ChatMessage, type InsertChatMessage, type Chat, type InsertChat, type ChatParticipant, type InsertChatParticipant, type LearningMaterial, type InsertLearningMaterial, users, customers, tasks, chatMessages, chats, chatParticipants, learningMaterials } from "@shared/schema";
 import { db } from "./db";
 import { eq, inArray, or, sql, desc, and, like, ilike } from "drizzle-orm";
 
@@ -52,6 +52,12 @@ export interface IStorage {
   
   // User search methods
   searchUsers(keyword: string, limit?: number): Promise<User[]>;
+  
+  // Learning material methods
+  getLearningMaterial(id: string): Promise<LearningMaterial | undefined>;
+  createLearningMaterial(material: InsertLearningMaterial): Promise<LearningMaterial>;
+  deleteLearningMaterial(id: string): Promise<boolean>;
+  getAllLearningMaterials(): Promise<LearningMaterial[]>;
 }
 
 export class PostgresStorage implements IStorage {
@@ -467,6 +473,26 @@ export class PostgresStorage implements IStorage {
         ilike(users.username, `%${keyword}%`)
       ))
       .limit(limit);
+  }
+  
+  // Learning material methods
+  async getLearningMaterial(id: string): Promise<LearningMaterial | undefined> {
+    const result = await db.select().from(learningMaterials).where(eq(learningMaterials.id, id)).limit(1);
+    return result[0];
+  }
+  
+  async createLearningMaterial(material: InsertLearningMaterial): Promise<LearningMaterial> {
+    const result = await db.insert(learningMaterials).values(material).returning();
+    return result[0];
+  }
+  
+  async deleteLearningMaterial(id: string): Promise<boolean> {
+    const result = await db.delete(learningMaterials).where(eq(learningMaterials.id, id)).returning();
+    return result.length > 0;
+  }
+  
+  async getAllLearningMaterials(): Promise<LearningMaterial[]> {
+    return await db.select().from(learningMaterials).orderBy(desc(learningMaterials.uploadDate));
   }
 }
 

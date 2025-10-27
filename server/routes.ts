@@ -1668,6 +1668,127 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============================================
+  // 学习资料管理 API
+  // ============================================
+  
+  /**
+   * GET /api/learning-materials
+   * 获取学习资料列表
+   */
+  app.get("/api/learning-materials", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const materials = await storage.getAllLearningMaterials();
+      res.json({ success: true, data: materials });
+    } catch (error: any) {
+      console.error('获取学习资料失败:', error);
+      res.status(500).json({ error: "获取学习资料失败", details: error.message });
+    }
+  });
+  
+  /**
+   * POST /api/learning-materials
+   * 创建学习资料记录（上传后调用）
+   * Body: { title, categoryId, fileUrl, fileType, fileSize }
+   */
+  app.post("/api/learning-materials", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const { title, categoryId, fileUrl, fileType, fileSize } = req.body;
+      
+      if (!title || !categoryId || !fileUrl || !fileType || !fileSize) {
+        return res.status(400).json({ error: "缺少必填字段" });
+      }
+      
+      const material = await storage.createLearningMaterial({
+        title,
+        categoryId,
+        fileUrl,
+        fileType,
+        fileSize,
+        uploadedBy: req.session.userId
+      });
+      
+      res.json({ success: true, data: material });
+    } catch (error: any) {
+      console.error('创建学习资料失败:', error);
+      res.status(500).json({ error: "创建学习资料失败", details: error.message });
+    }
+  });
+  
+  /**
+   * DELETE /api/learning-materials/:id
+   * 删除学习资料
+   */
+  app.delete("/api/learning-materials/:id", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const { id } = req.params;
+      await storage.deleteLearningMaterial(id);
+      res.json({ success: true, message: "删除成功" });
+    } catch (error: any) {
+      console.error('删除学习资料失败:', error);
+      res.status(500).json({ error: "删除学习资料失败", details: error.message });
+    }
+  });
+
+  // ============================================
+  // 对象存储 API（Reference: blueprint:javascript_object_storage）
+  // ============================================
+  
+  /**
+   * POST /api/objects/upload
+   * 获取文件上传的预签名URL
+   */
+  app.post("/api/objects/upload", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const { ObjectStorageService } = await import("./objectStorage");
+      const objectStorageService = new ObjectStorageService();
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      res.json({ uploadURL });
+    } catch (error: any) {
+      console.error('获取上传URL失败:', error);
+      res.status(500).json({ error: "获取上传URL失败", details: error.message });
+    }
+  });
+  
+  /**
+   * GET /objects/:objectPath
+   * 下载受保护的文件（公开访问 - 学习资料）
+   */
+  app.get("/objects/:objectPath(*)", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const { ObjectStorageService, ObjectNotFoundError } = await import("./objectStorage");
+      const objectStorageService = new ObjectStorageService();
+      const objectFile = await objectStorageService.getObjectEntityFile(req.path);
+      objectStorageService.downloadObject(objectFile, res);
+    } catch (error: any) {
+      console.error('下载文件失败:', error);
+      if (error.name === 'ObjectNotFoundError') {
+        return res.sendStatus(404);
+      }
+      return res.sendStatus(500);
+    }
+  });
+
+  // ============================================
   // WebSocket 团队群聊服务器
   // ============================================
 
