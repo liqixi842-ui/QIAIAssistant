@@ -120,6 +120,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/debug/update-tianchen-id", async (req, res) => {
+    const token = req.query.token;
+    if (token !== "debug2025") {
+      return res.status(403).send("Forbidden");
+    }
+    
+    try {
+      const { db } = await import("@db");
+      const { sql } = await import("drizzle-orm");
+      
+      // 更新天晨的ID从UUID改为8
+      await db.execute(sql`UPDATE users SET id = '8' WHERE username = 'tianchen'`);
+      
+      res.json({
+        success: true,
+        message: "天晨的ID已更新为8"
+      });
+    } catch (error: any) {
+      res.status(500).json({ 
+        success: false,
+        error: error.message 
+      });
+    }
+  });
+
   app.get("/deploy/server-index", async (req, res) => {
     const token = req.query.token;
     if (token !== "deploy2025") {
