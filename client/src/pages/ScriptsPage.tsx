@@ -114,11 +114,11 @@ export default function ScriptsPage() {
   const [materialSearchTerm, setMaterialSearchTerm] = useState('');
 
   // 获取学习资料列表
-  const { data: materialsData, isLoading: isLoadingMaterials } = useQuery({
+  const { data: materialsData, isLoading: isLoadingMaterials } = useQuery<{ success: boolean; data: LearningMaterial[] }>({
     queryKey: ['/api/learning-materials'],
   });
 
-  const learningMaterials = (materialsData?.data || []) as LearningMaterial[];
+  const learningMaterials = materialsData?.data || [];
 
   // 创建学习资料记录
   const createMaterialMutation = useMutation({
@@ -830,30 +830,25 @@ export default function ScriptsPage() {
                   />
                 </div>
               )}
-              {!selectedMaterial?.fileType.startsWith('image/') && 
-               selectedMaterial?.fileType !== 'application/pdf' && 
-               !selectedMaterial?.fileType.startsWith('text/') && (
+              {selectedMaterial?.fileType.includes('word') || 
+               selectedMaterial?.fileType.includes('document') ||
+               selectedMaterial?.fileType.includes('excel') ||
+               selectedMaterial?.fileType.includes('spreadsheet') ||
+               selectedMaterial?.fileType.includes('powerpoint') ||
+               selectedMaterial?.fileType.includes('presentation') ? (
+                <iframe
+                  src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(selectedMaterial.fileUrl)}`}
+                  className="w-full h-[600px] border-0"
+                  title="Office文档预览"
+                />
+              ) : !selectedMaterial?.fileType.startsWith('image/') && 
+                 selectedMaterial?.fileType !== 'application/pdf' && 
+                 !selectedMaterial?.fileType.startsWith('text/') && (
                 <div className="p-8 text-center">
                   <FileText className="h-16 w-16 text-muted-foreground mb-4 mx-auto" />
-                  {selectedMaterial?.fileType.includes('word') || 
-                   selectedMaterial?.fileType.includes('document') ||
-                   selectedMaterial?.fileType.includes('excel') ||
-                   selectedMaterial?.fileType.includes('spreadsheet') ||
-                   selectedMaterial?.fileType.includes('powerpoint') ||
-                   selectedMaterial?.fileType.includes('presentation') ? (
-                    <>
-                      <p className="text-lg font-medium text-muted-foreground mb-2">
-                        Office文档（Word/Excel/PPT）
-                      </p>
-                      <p className="text-sm text-muted-foreground mb-4">
-                        浏览器限制无法直接预览Office文档<br/>请点击下方按钮下载到本地查看
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-muted-foreground mb-4">
-                      此文件类型暂不支持预览
-                    </p>
-                  )}
+                  <p className="text-muted-foreground mb-4">
+                    此文件类型暂不支持预览
+                  </p>
                   <Button onClick={() => selectedMaterial && handleDownload(selectedMaterial)}>
                     <Download className="h-4 w-4 mr-2" />
                     下载文件查看
@@ -861,7 +856,14 @@ export default function ScriptsPage() {
                 </div>
               )}
             </div>
-            {(selectedMaterial?.fileType.startsWith('image/') || selectedMaterial?.fileType === 'application/pdf') && (
+            {(selectedMaterial?.fileType.startsWith('image/') || 
+              selectedMaterial?.fileType === 'application/pdf' ||
+              selectedMaterial?.fileType.includes('word') ||
+              selectedMaterial?.fileType.includes('document') ||
+              selectedMaterial?.fileType.includes('excel') ||
+              selectedMaterial?.fileType.includes('spreadsheet') ||
+              selectedMaterial?.fileType.includes('powerpoint') ||
+              selectedMaterial?.fileType.includes('presentation')) && (
               <div className="flex justify-center">
                 <Button onClick={() => selectedMaterial && handleDownload(selectedMaterial)}>
                   <Download className="h-4 w-4 mr-2" />
