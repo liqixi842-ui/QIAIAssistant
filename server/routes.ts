@@ -735,6 +735,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { phone, computer, charger, dormitory, joinDate, wave } = req.body;
 
+      console.log('📥 接收到的设备信息请求:', {
+        userId: id,
+        requestBody: req.body,
+        phone, computer, charger, dormitory, joinDate, wave
+      });
+
       // 更新设备信息
       const updates: any = {};
       if (phone !== undefined) updates.phone = phone;
@@ -744,7 +750,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (joinDate !== undefined) updates.joinDate = joinDate;
       if (wave !== undefined) updates.wave = wave;
 
+      console.log('💾 准备保存的updates对象:', updates);
+
       const updatedUser = await storage.updateUser(id, updates);
+      
+      console.log('✅ 保存后的用户数据:', {
+        id: updatedUser?.id,
+        phone: updatedUser?.phone,
+        computer: updatedUser?.computer,
+        charger: updatedUser?.charger,
+        dormitory: updatedUser?.dormitory,
+        joinDate: updatedUser?.joinDate,
+        wave: updatedUser?.wave
+      });
       
       if (!updatedUser) {
         return res.status(500).json({ error: "更新失败" });

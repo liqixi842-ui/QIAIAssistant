@@ -114,7 +114,8 @@ export class PostgresStorage implements IStorage {
   }
 
   async getAllUsers(): Promise<User[]> {
-    return await db.select().from(users);
+    // 按ID排序，确保顺序稳定
+    return await db.select().from(users).orderBy(users.id);
   }
 
   async getCustomer(id: string): Promise<Customer | undefined> {
