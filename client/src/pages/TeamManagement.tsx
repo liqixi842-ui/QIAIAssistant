@@ -198,7 +198,7 @@ export default function TeamManagement({ userRole: propUserRole, userName: propU
 
   const saveEdit = async (memberId: string) => {
     try {
-      await apiRequest('PATCH', `/api/users/${memberId}/equipment`, {
+      const response = await apiRequest('PATCH', `/api/users/${memberId}/equipment`, {
         phone: editForm.phoneCount || 0,
         computer: editForm.computerCount || 0,
         charger: editForm.chargerCount || 0,
@@ -209,6 +209,10 @@ export default function TeamManagement({ userRole: propUserRole, userName: propU
 
       // 刷新数据并等待完成
       await queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      
+      // 等待一小段时间确保数据已写入
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       await queryClient.refetchQueries({ queryKey: ['/api/users'] });
 
       toast({
