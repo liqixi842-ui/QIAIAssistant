@@ -1724,7 +1724,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   /**
    * GET /api/learning-materials/:id/preview-url
-   * 获取学习资料的临时预览URL（7天有效期，供Office Online使用）
+   * 获取学习资料的临时预览URL（供Office Online使用）
+   * 支持对象存储（签名URL）和本地文件（直接URL）
    */
   app.get("/api/learning-materials/:id/preview-url", async (req, res) => {
     if (!req.session.userId) {
@@ -1740,22 +1741,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "学习资料不存在" });
       }
 
-      // 从fileUrl提取bucket和object信息
-      const { signObjectURL } = await import("./objectStorage");
-      const url = new URL(material.fileUrl);
-      const pathParts = url.pathname.split('/');
-      const bucketName = pathParts[1];
-      const objectName = pathParts.slice(2).join('/');
+      // 判断是本地文件还是对象存储
+      if (material.fileUrl.startsWith('/uploads/')) {
+        // 本地文件：构造完整URL（Nginx会提供静态文件访问）
+        const protocol = req.protocol;
+        const host = req.get('host');
+        const fullUrl = `${protocol}://${host}${material.fileUrl}`;
+        
+        console.log('📄 本地文件预览URL:', fullUrl);
+        res.json({ success: true, previewUrl: fullUrl });
+      } else {
+        // 对象存储：生成签名URL
+        const { signObjectURL } = await import("./objectStorage");
+        const url = new URL(material.fileUrl);
+        const pathParts = url.pathname.split('/');
+        const bucketName = pathParts[1];
+        const objectName = pathParts.slice(2).join('/');
 
-      // 生成7天有效期的签名URL
-      const signedURL = await signObjectURL({
-        bucketName,
-        objectName,
-        method: 'GET',
-        ttlSec: 7 * 24 * 60 * 60 // 7天
-      });
+        // 生成7天有效期的签名URL
+        const signedURL = await signObjectURL({
+          bucketName,
+          objectName,
+          method: 'GET',
+          ttlSec: 7 * 24 * 60 * 60 // 7天
+        });
 
-      res.json({ success: true, previewUrl: signedURL });
+        console.log('☁️ 对象存储签名URL已生成');
+        res.json({ success: true, previewUrl: signedURL });
+      }
     } catch (error: any) {
       console.error('获取预览URL失败:', error);
       res.status(500).json({ error: "获取预览URL失败", details: error.message });
