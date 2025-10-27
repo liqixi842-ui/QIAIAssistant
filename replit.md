@@ -85,9 +85,35 @@ Preferred communication style: Simple, everyday language.
   - Status field uses English values (pending/active/completed)
 - **Feedback System:** Universal access for submission and viewing, anonymous display for most roles, resolution tracking, and management controls for supervisors/directors.
 
+## Recent Changes (2025-01-27)
+
+1. **✅ Registration System Overhaul - Role Hierarchy Validation (Latest)**:
+   - **Removed Real Name Field**: Registration now only requires nickname (花名) as the display name
+   - **Username Format Validation**: 
+     - Frontend and backend enforce alphanumeric-only usernames (拼音+数字)
+     - Regex: `/^[a-zA-Z0-9]+$/`
+     - Examples: zhangsan, lisi123
+     - Clear error messages for invalid formats
+   - **Strict Role Hierarchy Enforcement**:
+     - **业务 (Sales)** → Must have 经理 (Manager) as supervisor
+     - **经理 (Manager)** → Must have 总监 (Director) as supervisor
+     - **总监 (Director)** → Must have 主管 (Supervisor ID=7) as supervisor
+     - **后勤 (Logistics)** → Must have 主管 (Supervisor ID=7) as supervisor
+   - **Backend Validation**:
+     - Role whitelist: Only ['总监', '经理', '业务', '后勤'] allowed
+     - Supervisor ID existence verification via database lookup
+     - Role hierarchy validation prevents mismatched supervisor roles
+     - All inputs trimmed to prevent whitespace bypass
+   - **Frontend UX Improvements**:
+     - Dynamic placeholder hints based on selected role
+     - Helper text guides users to fill correct supervisor ID
+     - Supervisor ID field cleared when role changes
+   - **Security**: Prevents bypass via direct API calls with invalid roles or incorrect hierarchy
+   - **Architect Review**: Passed multiple rounds, all security vulnerabilities closed
+
 ## Recent Changes (2025-01-26)
 
-1. **🚨 Session Cookie Issue - Pending Fix (Latest)**:
+1. **🚨 Session Cookie Issue - Pending Fix**:
    - **Problem**: Session cookie not being sent to browser despite `app.set('trust proxy', 1)` configured
    - **Symptom**: GET /api/chat/messages returns 401 "未登录", chat history not loading after page navigation
    - **Root Cause Identified**: Login endpoint missing `req.session.save()` callback to explicitly save session
