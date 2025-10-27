@@ -30,7 +30,13 @@ Preferred communication style: Simple, everyday language.
     - **Session Security**: Non-persistent session cookies (`maxAge` removed), `httpOnly: true`, `sameSite: 'lax'`, `secure: true` in production, complete logout flow with `req.session.destroy()` and `res.clearCookie()`.
     - **Chat Room Isolation**: `chat_id` column added to `chat_messages` table for filtering, `getChatMessagesByChatId()` method, API accepts `chatId` parameter, WebSocket messages include `chatId`, frontend filters messages by `chatId`.
     - **Reports System**: 4-Dimensional Analysis (By Channel, By Date, By Team, By Agent) via `/api/reports/summary-tables` endpoint, returning 4 summary datasets with 15 key metrics, date range filtering, handling for orphaned customers/teams.
-    - **Team Management Enhancement**: Reads logged-in user from localStorage instead of default props, ensuring team members can view/edit their own equipment and see themselves in the team list.
+    - **Team Management Enhancement**: Reads logged-in user from localStorage instead of default props, ensuring team members can view/edit their own equipment and see themselves in the team list. ID-based filtering (not name-based) ensures business users always see their own row. Equipment editing fully implemented via `PATCH /api/users/:id/equipment` endpoint.
+    - **Chat System Enhancements**: 
+        - **Message Persistence**: `POST /api/chat/messages` API saves messages to database before WebSocket broadcast, preventing message loss on refresh.
+        - **Auto-Reconnection**: WebSocket implements exponential backoff reconnection (up to 10 attempts), allowing offline message sending.
+        - **Read Status**: `PATCH /api/chats/:chatId/read` API with `markChatAsRead()` storage method tracks unread messages accurately.
+        - **Direct Chat Naming**: Private chats automatically named with counterpart's nickname (resolves "未命名通话" issue).
+        - **Reliable Delivery**: Messages persist even when recipient is offline, visible upon their next login.
 
 ## External Dependencies
 

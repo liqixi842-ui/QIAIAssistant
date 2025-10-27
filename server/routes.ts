@@ -64,84 +64,9 @@ async function logAudit(params: {
 export async function registerRoutes(app: Express): Promise<Server> {
   
   // ============================================
-  // 临时部署下载端点（部署完成后删除）
+  // 调试端点（仅用于开发）
   // ============================================
   
-  app.get("/deploy/routes-fixed", async (req, res) => {
-    const token = req.query.token;
-    if (token !== "deploy2025") {
-      return res.status(403).send("Forbidden");
-    }
-    
-    const fs = await import('fs');
-    const path = await import('path');
-    const filePath = path.resolve(import.meta.dirname, 'routes.ts');
-    
-    res.setHeader('Content-Type', 'text/plain');
-    res.setHeader('Content-Disposition', 'attachment; filename="routes.ts"');
-    res.sendFile(filePath);
-  });
-
-  app.get("/deploy/chat-page", async (req, res) => {
-    const token = req.query.token;
-    if (token !== "deploy2025") {
-      return res.status(403).send("Forbidden");
-    }
-    
-    const fs = await import('fs');
-    const path = await import('path');
-    const filePath = path.resolve(import.meta.dirname, '..', 'client', 'src', 'pages', 'ChatPage.tsx');
-    
-    res.setHeader('Content-Type', 'text/plain');
-    res.setHeader('Content-Disposition', 'attachment; filename="ChatPage.tsx"');
-    res.sendFile(filePath);
-  });
-
-  app.get("/deploy/team-management-fixed", async (req, res) => {
-    const token = req.query.token;
-    if (token !== "deploy2025") {
-      return res.status(403).send("Forbidden");
-    }
-    
-    const fs = await import('fs');
-    const path = await import('path');
-    const filePath = path.resolve(import.meta.dirname, '..', 'client', 'src', 'pages', 'TeamManagement.tsx');
-    
-    res.setHeader('Content-Type', 'text/plain');
-    res.setHeader('Content-Disposition', 'attachment; filename="TeamManagement.tsx"');
-    res.sendFile(filePath);
-  });
-
-  app.get("/deploy/storage-fixed", async (req, res) => {
-    const token = req.query.token;
-    if (token !== "deploy2025") {
-      return res.status(403).send("Forbidden");
-    }
-    
-    const fs = await import('fs');
-    const path = await import('path');
-    const filePath = path.resolve(import.meta.dirname, 'storage.ts');
-    
-    res.setHeader('Content-Type', 'text/plain');
-    res.setHeader('Content-Disposition', 'attachment; filename="storage.ts"');
-    res.sendFile(filePath);
-  });
-
-  app.get("/deploy/websocket-context", async (req, res) => {
-    const token = req.query.token;
-    if (token !== "deploy2025") {
-      return res.status(403).send("Forbidden");
-    }
-    
-    const fs = await import('fs');
-    const path = await import('path');
-    const filePath = path.resolve(import.meta.dirname, '..', 'client', 'src', 'contexts', 'WebSocketContext.tsx');
-    
-    res.setHeader('Content-Type', 'text/plain');
-    res.setHeader('Content-Disposition', 'attachment; filename="WebSocketContext.tsx"');
-    res.sendFile(filePath);
-  });
-
   app.get("/debug/users", async (req, res) => {
     const token = req.query.token;
     if (token !== "debug2025") {
