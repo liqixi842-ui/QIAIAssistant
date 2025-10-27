@@ -344,6 +344,93 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  /**
+   * 更新用户信息（仅主管可用）
+   * PATCH /api/users/:id
+   */
+  app.patch("/api/users/:id", async (req, res) => {
+    try {
+      // 验证用户已登录
+      if (!req.session.userId) {
+        return res.status(401).json({ error: "未登录" });
+      }
+
+      // 验证是否为主管
+      const currentUser = await storage.getUser(req.session.userId);
+      if (!currentUser || currentUser.role !== '主管') {
+        return res.status(403).json({ error: "只有主管可以修改用户信息" });
+      }
+
+      const { id } = req.params;
+      const { supervisorId, nickname, role, position, team } = req.body;
+
+      // 验证用户存在
+      const targetUser = await storage.getUser(id);
+      if (!targetUser) {
+        return res.status(404).json({ error: "用户不存在" });
+      }
+
+      // 如果修改上级ID，需要验证上级存在且角色层级正确
+      if (supervisorId !== undefined) {
+        const trimmedSupervisorId = supervisorId.trim();
+        
+        // 验证上级存在
+        const supervisor = await storage.getUser(trimmedSupervisorId);
+        if (!supervisor) {
+          return res.status(400).json({ error: "上级ID不存在" });
+        }
+
+        // 验证角色层级关系
+        const userRole = role || targetUser.role; // 使用新角色或原有角色
+        const expectedSupervisorRole: Record<string, string> = {
+          '业务': '经理',
+          '经理': '总监',
+          '总监': '主管',
+          '后勤': '主管'
+        };
+
+        const expected = expectedSupervisorRole[userRole];
+        if (expected && supervisor.role !== expected) {
+          return res.status(400).json({ 
+            error: `${userRole}的上级必须是${expected}，但提供的上级ID是${supervisor.role}` 
+          });
+        }
+      }
+
+      // 更新用户信息
+      const updates: any = {};
+      if (supervisorId !== undefined) updates.supervisorId = supervisorId.trim();
+      if (nickname !== undefined) updates.nickname = nickname.trim();
+      if (role !== undefined) updates.role = role.trim();
+      if (position !== undefined) updates.position = position.trim();
+      if (team !== undefined) updates.team = team.trim();
+
+      const updatedUser = await storage.updateUser(id, updates);
+
+      if (!updatedUser) {
+        return res.status(404).json({ error: "更新失败" });
+      }
+
+      res.json({
+        success: true,
+        message: "用户信息已更新",
+        user: {
+          id: updatedUser.id,
+          username: updatedUser.username,
+          name: updatedUser.name,
+          nickname: updatedUser.nickname,
+          role: updatedUser.role,
+          supervisorId: updatedUser.supervisorId,
+          position: updatedUser.position,
+          team: updatedUser.team
+        }
+      });
+    } catch (error) {
+      console.error('更新用户信息失败:', error);
+      res.status(500).json({ error: "更新用户信息失败" });
+    }
+  });
+
   // ============================================
   // AI 分析 API 路由
   // ============================================

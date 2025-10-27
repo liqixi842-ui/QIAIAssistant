@@ -6,6 +6,7 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUser(id: string, updates: Partial<InsertUser>): Promise<User | undefined>;
   getAllUsers(): Promise<User[]>;
   
   // Customer methods
@@ -73,6 +74,32 @@ export class PostgresStorage implements IStorage {
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const result = await db.insert(users).values(insertUser).returning();
+    return result[0];
+  }
+
+  async updateUser(id: string, updates: Partial<InsertUser>): Promise<User | undefined> {
+    const updateData: any = {};
+    if (updates.supervisorId !== undefined) updateData.supervisor_id = updates.supervisorId;
+    if (updates.nickname !== undefined) updateData.nickname = updates.nickname;
+    if (updates.role !== undefined) updateData.role = updates.role;
+    if (updates.position !== undefined) updateData.position = updates.position;
+    if (updates.team !== undefined) updateData.team = updates.team;
+    if (updates.phone !== undefined) updateData.phone = updates.phone;
+    if (updates.computer !== undefined) updateData.computer = updates.computer;
+    if (updates.charger !== undefined) updateData.charger = updates.charger;
+    if (updates.dormitory !== undefined) updateData.dormitory = updates.dormitory;
+    if (updates.joinDate !== undefined) updateData.join_date = updates.joinDate;
+    if (updates.wave !== undefined) updateData.wave = updates.wave;
+    if (updates.password !== undefined) updateData.password = updates.password;
+
+    if (Object.keys(updateData).length === 0) {
+      return await this.getUser(id);
+    }
+
+    const result = await db.update(users)
+      .set(updateData)
+      .where(eq(users.id, id))
+      .returning();
     return result[0];
   }
 
