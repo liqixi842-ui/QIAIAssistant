@@ -519,14 +519,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const users = await storage.getAllUsers();
       
-      // 返回用户列表（不包含密码）
+      // 返回用户列表（包含设备信息，不包含密码）
       const userList = users.map(user => ({
         id: user.id,
         username: user.username,
         name: user.name,
         nickname: user.nickname,
         role: user.role,
-        supervisorId: user.supervisorId
+        supervisorId: user.supervisorId,
+        phone: user.phone,
+        computer: user.computer,
+        charger: user.charger,
+        dormitory: user.dormitory,
+        joinDate: user.joinDate,
+        wave: user.wave
       }));
 
       res.json({ success: true, data: userList });
