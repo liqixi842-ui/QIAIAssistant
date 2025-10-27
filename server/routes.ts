@@ -4,6 +4,8 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { insertCustomerSchema, insertTaskSchema } from "@shared/schema";
 import { requireAuth, getCurrentUser } from "./middleware/auth";
+import { db } from "./db";
+import { sql } from "drizzle-orm";
 import {
   analyzeCustomerProfile,
   analyzeConversationSentiment,
@@ -127,9 +129,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     
     try {
-      const { db } = await import("./db");
-      const { sql } = await import("drizzle-orm");
-      
       // 更新天晨的ID从UUID改为8
       await db.execute(sql`UPDATE users SET id = '8' WHERE username = 'tianchen'`);
       
