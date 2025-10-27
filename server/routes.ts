@@ -1566,12 +1566,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/reports/summary-tables", requireAuth, async (req, res) => {
     try {
       const { dateStart, dateEnd } = req.query;
+      const userId = req.session.userId!;
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(401).json({ error: "用户未登录" });
+      }
 
-      // 获取筛选后的客户数据
-      const customers = await storage.getReportsData({
+      // 权限过滤：业务员只能看自己的数据
+      const filters: any = {
         dateStart: dateStart as string,
         dateEnd: dateEnd as string
-      });
+      };
+      
+      if (user.role === '业务') {
+        filters.createdBy = userId;
+      }
+
+      // 获取筛选后的客户数据
+      const customers = await storage.getReportsData(filters);
 
       // 获取所有用户（用于关联业务员信息）
       const users = await storage.getAllUsers();

@@ -64,6 +64,9 @@ export const customers = pgTable("customers", {
   lastReplyAt: text("last_reply_at"), // 客户最后回复时间
   conversationCount: integer("conversation_count").default(0), // 对话次数（我们发送的消息数）
   replyCount: integer("reply_count").default(0), // 回复次数（客户回复的消息数）
+  
+  // 封锁状态
+  blocked: integer("blocked").default(0), // 0=正常 1=已封锁
 });
 
 export const insertCustomerSchema = createInsertSchema(customers).omit({
@@ -72,7 +75,8 @@ export const insertCustomerSchema = createInsertSchema(customers).omit({
   phone: z.string()
     .min(4, "手机后四位必须是4位数字")
     .max(4, "手机后四位必须是4位数字")
-    .regex(/^\d{4}$/, "手机后四位必须是4位数字")
+    .regex(/^\d{4}$/, "手机后四位必须是4位数字"),
+  blocked: z.number().optional()
 });
 
 export type InsertCustomer = z.infer<typeof insertCustomerSchema>;

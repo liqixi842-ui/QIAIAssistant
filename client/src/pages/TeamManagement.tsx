@@ -203,8 +203,9 @@ export default function TeamManagement({ userRole: propUserRole, userName: propU
         wave: editForm.waveNumber || ''
       });
 
-      // 刷新数据
-      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      // 刷新数据并等待完成
+      await queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      await queryClient.refetchQueries({ queryKey: ['/api/users'] });
 
       toast({
         title: "保存成功",

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import CustomerTag from '@/components/CustomerTag';
-import { Search, Plus, User, MessageSquare, Sparkles, TrendingUp } from 'lucide-react';
+import { Search, Plus, User, MessageSquare, Sparkles, TrendingUp, Ban, CheckCircle } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -46,6 +46,7 @@ interface Customer {
   stage: string;
   lastContact: string;
   createdBy?: string; // 创建者ID
+  blocked?: number; // 封锁状态 0=正常 1=已封锁
   channel?: string;
   date?: string;
   assistant?: string;
@@ -227,10 +228,16 @@ export default function CustomersPage() {
 
   const customers = customersData?.data || [];
 
-  const filteredCustomers = customers.filter(customer =>
-    (customer.name ?? "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.phone.includes(searchTerm)
-  );
+  const filteredCustomers = customers
+    .filter(customer => {
+      // 按业务员筛选
+      if (selectedUserId !== 'all' && customer.createdBy !== selectedUserId) {
+        return false;
+      }
+      // 按搜索词筛选
+      return (customer.name ?? "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        customer.phone.includes(searchTerm);
+    });
 
   const handleCustomerSelect = (customer: Customer) => {
     setSelectedCustomer(customer);
@@ -476,6 +483,27 @@ export default function CustomersPage() {
     }
   });
 
+  // 切换客户封锁状态
+  const toggleBlockMutation = useMutation({
+    mutationFn: async ({ id, blocked }: { id: string; blocked: number }) => {
+      return await apiRequest('PATCH', `/api/customers/${id}`, { blocked });
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/customers'] });
+      toast({
+        title: variables.blocked === 1 ? "客户已封锁" : "客户已解封",
+        description: variables.blocked === 1 ? "该客户已被移至封锁池" : "该客户已恢复正常",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "操作失败",
+        description: error.message || "请稍后重试",
+        variant: "destructive",
+      });
+    }
+  });
+
   const handleAddCustomer = () => {
     if (!newCustomerPhone.trim() || newCustomerPhone.length !== 4) {
       toast({
@@ -680,17 +708,26 @@ export default function CustomersPage() {
           <Dialog key={customer.id}>
             <DialogTrigger asChild>
               <Card 
-                className="p-4 hover-elevate cursor-pointer transition-all"
+                className={`p-4 hover-elevate cursor-pointer transition-all ${customer.blocked === 1 ? 'opacity-60 border-destructive' : ''}`}
                 onClick={() => handleCustomerSelect(customer)}
                 data-testid={`customer-card-${customer.id}`}
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <User className="h-5 w-5 text-primary" />
+                    <div className={`h-10 w-10 rounded-full flex items-center justify-center ${customer.blocked === 1 ? 'bg-destructive/10' : 'bg-primary/10'}`}>
+                      {customer.blocked === 1 ? (
+                        <Ban className="h-5 w-5 text-destructive" />
+                      ) : (
+                        <User className="h-5 w-5 text-primary" />
+                      )}
                     </div>
                     <div>
-                      <h3 className="font-semibold">{customer.name || `客户 ${customer.phone}`}</h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold">{customer.name || `客户 ${customer.phone}`}</h3>
+                        {customer.blocked === 1 && (
+                          <Badge variant="destructive" className="text-xs">已封锁</Badge>
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground">尾号 {customer.phone}</p>
                       {customer.createdBy && (
                         <p className="text-xs text-muted-foreground">
@@ -702,11 +739,11 @@ export default function CustomersPage() {
                   <Badge variant="secondary">{customer.stage}</Badge>
                 </div>
                 <div className="flex flex-wrap gap-1 mb-2">
-                  {customer.tags && customer.tags.slice(0, 3).map((tag, idx) => (
+                  {customer.tags && customer.tags.slice(0, 6).map((tag, idx) => (
                     <CustomerTag key={idx} label={tag.label} type={tag.type} />
                   ))}
-                  {customer.tags && customer.tags.length > 3 && (
-                    <Badge variant="outline">+{customer.tags.length - 3}</Badge>
+                  {customer.tags && customer.tags.length > 6 && (
+                    <Badge variant="outline">+{customer.tags.length - 6}</Badge>
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">最后联系: {customer.lastContact}</p>
@@ -739,6 +776,31 @@ export default function CustomersPage() {
                     >
                       {updateCustomerMutation.isPending ? '保存中...' : '保存标签'}
                     </Button>
+                    {isOwner && (
+                      <Button
+                        variant={customer.blocked === 1 ? "default" : "destructive"}
+                        onClick={() => {
+                          toggleBlockMutation.mutate({
+                            id: customer.id,
+                            blocked: customer.blocked === 1 ? 0 : 1
+                          });
+                        }}
+                        disabled={toggleBlockMutation.isPending}
+                        data-testid="button-toggle-block"
+                      >
+                        {toggleBlockMutation.isPending ? '处理中...' : (customer.blocked === 1 ? (
+                          <>
+                            <CheckCircle className="h-4 w-4 mr-2" />
+                            解封客户
+                          </>
+                        ) : (
+                          <>
+                            <Ban className="h-4 w-4 mr-2" />
+                            封锁客户
+                          </>
+                        ))}
+                      </Button>
+                    )}
                   </div>
                   
                   <Tabs defaultValue="profile" className="w-full">
