@@ -110,9 +110,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
    */
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { username, password, name, nickname, role, supervisorId } = req.body;
+      const { username, password, nickname, role, supervisorId } = req.body;
 
-      // 严格验证所有5个必填字段（防止空字符串和纯空格）
+      // 严格验证所有必填字段（防止空字符串和纯空格）
       if (!username?.trim() || !password?.trim() || !nickname?.trim() || !role?.trim() || !supervisorId?.trim()) {
         return res.status(400).json({ 
           error: "请填写所有必填字段（用户名、密码、花名、职位、上级ID）" 
@@ -126,7 +126,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const trimmedRole = role.trim();
       const trimmedSupervisorId = supervisorId.trim();
 
-      // 禁止注册主管角色
+      // 验证用户名格式：只允许英文字母和数字
+      const usernameRegex = /^[a-zA-Z0-9]+$/;
+      if (!usernameRegex.test(trimmedUsername)) {
+        return res.status(400).json({ 
+          error: "用户名只能包含英文字母和数字，例如：zhangsan、lisi123" 
+        });
+      }
+
+      // 验证角色是否在允许的列表中
+      const allowedRoles = ['总监', '经理', '业务', '后勤'];
+      if (!allowedRoles.includes(trimmedRole)) {
+        return res.status(400).json({ 
+          error: "无效的职位，只能选择：总监、经理、业务、后勤" 
+        });
+      }
+
+      // 禁止注册主管角色（双重检查）
       if (trimmedRole === "主管") {
         return res.status(403).json({ error: "主管账号不可注册" });
       }
@@ -137,11 +153,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(409).json({ error: "用户名已存在" });
       }
 
+      // 验证上级ID存在并检查角色层级关系
+      const supervisor = await storage.getUserById(trimmedSupervisorId);
+      if (!supervisor) {
+        return res.status(400).json({ error: "上级ID不存在，请填写正确的上级ID" });
+      }
+
+      // 验证角色层级关系（严格匹配）
+      const roleHierarchy: { [key: string]: string[] } = {
+        '业务': ['经理'],           // 业务的上级必须是经理
+        '经理': ['总监'],           // 经理的上级必须是总监
+        '总监': ['主管'],           // 总监的上级必须是主管
+        '后勤': ['主管']            // 后勤的上级必须是主管
+      };
+
+      const allowedSupervisorRoles = roleHierarchy[trimmedRole];
+      if (allowedSupervisorRoles && !allowedSupervisorRoles.includes(supervisor.role)) {
+        return res.status(400).json({ 
+          error: `${trimmedRole}的上级必须是${allowedSupervisorRoles.join('或')}，您填写的上级是${supervisor.role}` 
+        });
+      }
+
       // 创建用户（使用trim后的值）
       const user = await storage.createUser({
         username: trimmedUsername,
         password: trimmedPassword, // 注意：实际生产环境应使用bcrypt等加密
-        name: name?.trim() || trimmedNickname, // 如果name为空，使用nickname
+        name: trimmedNickname, // 使用花名作为name
         nickname: trimmedNickname,
         role: trimmedRole,
         supervisorId: trimmedSupervisorId,

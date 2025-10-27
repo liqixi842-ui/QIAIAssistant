@@ -31,6 +31,17 @@ export default function RegisterPage() {
       return;
     }
     
+    // 验证用户名格式：只允许拼音（英文字母）和数字
+    const usernameRegex = /^[a-zA-Z0-9]+$/;
+    if (!usernameRegex.test(formData.username)) {
+      toast({
+        title: "注册失败",
+        description: "用户名只能包含英文字母和数字，例如：zhangsan、lisi123",
+        variant: "destructive"
+      });
+      return;
+    }
+    
     // 禁止注册主管角色
     if (formData.role === '主管') {
       toast({
@@ -48,7 +59,6 @@ export default function RegisterPage() {
         body: JSON.stringify({
           username: formData.username,
           password: formData.password,
-          name: formData.nickname, // 真实姓名使用花名
           nickname: formData.nickname,
           role: formData.role,
           supervisorId: formData.supervisorId
@@ -87,14 +97,17 @@ export default function RegisterPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Input
-            type="text"
-            placeholder="用户名 *"
-            value={formData.username}
-            onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-            data-testid="input-username"
-            required
-          />
+          <div className="space-y-1">
+            <Input
+              type="text"
+              placeholder="用户名（拼音或拼音+数字）*"
+              value={formData.username}
+              onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+              data-testid="input-username"
+              required
+            />
+            <p className="text-xs text-muted-foreground">只允许英文字母和数字，例如：zhangsan、lisi123</p>
+          </div>
           <Input
             type="password"
             placeholder="密码 *"
@@ -113,7 +126,7 @@ export default function RegisterPage() {
           />
           <Select
             value={formData.role}
-            onValueChange={(value) => setFormData({ ...formData, role: value })}
+            onValueChange={(value) => setFormData({ ...formData, role: value, supervisorId: '' })}
             required
           >
             <SelectTrigger data-testid="select-role">
@@ -126,14 +139,30 @@ export default function RegisterPage() {
               <SelectItem value="后勤">后勤</SelectItem>
             </SelectContent>
           </Select>
-          <Input
-            type="text"
-            placeholder="上级ID *（填写您的直属上级ID，总监填7）"
-            value={formData.supervisorId}
-            onChange={(e) => setFormData({ ...formData, supervisorId: e.target.value })}
-            data-testid="input-supervisor-id"
-            required
-          />
+          <div className="space-y-1">
+            <Input
+              type="text"
+              placeholder={
+                formData.role === '业务' ? '上级ID（填写您的经理ID）*' :
+                formData.role === '经理' ? '上级ID（填写您的总监ID）*' :
+                formData.role === '总监' || formData.role === '后勤' ? '上级ID（填写主管ID：7）*' :
+                '上级ID *'
+              }
+              value={formData.supervisorId}
+              onChange={(e) => setFormData({ ...formData, supervisorId: e.target.value })}
+              data-testid="input-supervisor-id"
+              required
+            />
+            {formData.role === '业务' && (
+              <p className="text-xs text-muted-foreground">业务人员必须填写经理的ID</p>
+            )}
+            {formData.role === '经理' && (
+              <p className="text-xs text-muted-foreground">经理必须填写总监的ID</p>
+            )}
+            {(formData.role === '总监' || formData.role === '后勤') && (
+              <p className="text-xs text-muted-foreground">总监和后勤人员填写主管ID：7</p>
+            )}
+          </div>
           <div className="flex gap-3">
             <Button
               type="submit"
