@@ -1,6 +1,6 @@
-import { type User, type InsertUser, type Customer, type InsertCustomer, type Task, type InsertTask, type ChatMessage, type InsertChatMessage, users, customers, tasks, chatMessages } from "@shared/schema";
+import { type User, type InsertUser, type Customer, type InsertCustomer, type Task, type InsertTask, type ChatMessage, type InsertChatMessage, type Chat, type InsertChat, type ChatParticipant, type InsertChatParticipant, users, customers, tasks, chatMessages, chats, chatParticipants } from "@shared/schema";
 import { db } from "./db";
-import { eq, inArray, or, sql, desc } from "drizzle-orm";
+import { eq, inArray, or, sql, desc, and, like, ilike } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -36,6 +36,22 @@ export interface IStorage {
   createChatMessage(message: InsertChatMessage): Promise<ChatMessage>;
   getAllChatMessages(limit?: number): Promise<ChatMessage[]>;
   getChatMessagesByChatId(chatId: string, limit?: number): Promise<ChatMessage[]>;
+  searchChatMessages(keyword: string, limit?: number): Promise<ChatMessage[]>;
+  
+  // Chat room methods
+  getChat(id: string): Promise<Chat | undefined>;
+  createChat(chat: InsertChat): Promise<Chat>;
+  getUserChats(userId: string): Promise<Array<Chat & { participants: ChatParticipant[]; lastMessage?: ChatMessage; unreadCount: number }>>;
+  getOrCreateDirectChat(userId1: string, userId2: string): Promise<Chat>;
+  
+  // Chat participant methods
+  addChatParticipant(participant: InsertChatParticipant): Promise<ChatParticipant>;
+  removeChatParticipant(chatId: string, userId: string): Promise<boolean>;
+  getChatParticipants(chatId: string): Promise<ChatParticipant[]>;
+  isUserInChat(chatId: string, userId: string): Promise<boolean>;
+  
+  // User search methods
+  searchUsers(keyword: string, limit?: number): Promise<User[]>;
 }
 
 export class PostgresStorage implements IStorage {
@@ -278,6 +294,178 @@ export class PostgresStorage implements IStorage {
       .from(chatMessages)
       .where(eq(chatMessages.chatId, chatId))
       .orderBy(desc(chatMessages.timestamp))
+      .limit(limit);
+  }
+  
+  async searchChatMessages(keyword: string, limit: number = 50): Promise<ChatMessage[]> {
+    return await db.select()
+      .from(chatMessages)
+      .where(ilike(chatMessages.content, `%${keyword}%`))
+      .orderBy(desc(chatMessages.timestamp))
+      .limit(limit);
+  }
+  
+  // Chat room methods
+  async getChat(id: string): Promise<Chat | undefined> {
+    const result = await db.select().from(chats).where(eq(chats.id, id)).limit(1);
+    return result[0];
+  }
+  
+  async createChat(insertChat: InsertChat): Promise<Chat> {
+    const result = await db.insert(chats).values(insertChat).returning();
+    return result[0];
+  }
+  
+  async getUserChats(userId: string): Promise<Array<Chat & { participants: ChatParticipant[]; lastMessage?: ChatMessage; unreadCount: number }>> {
+    // 获取用户参与的所有聊天室
+    const userParticipations = await db.select()
+      .from(chatParticipants)
+      .where(eq(chatParticipants.userId, userId));
+    
+    const chatIds = userParticipations.map(p => p.chatId);
+    if (chatIds.length === 0) return [];
+    
+    // 获取聊天室信息
+    const chatList = await db.select()
+      .from(chats)
+      .where(inArray(chats.id, chatIds));
+    
+    // 为每个聊天室获取成员和最后一条消息
+    const result = await Promise.all(chatList.map(async (chat) => {
+      const participants = await db.select()
+        .from(chatParticipants)
+        .where(eq(chatParticipants.chatId, chat.id));
+      
+      const messages = await db.select()
+        .from(chatMessages)
+        .where(eq(chatMessages.chatId, chat.id))
+        .orderBy(desc(chatMessages.timestamp))
+        .limit(1);
+      
+      const lastMessage = messages[0];
+      
+      // 计算未读消息数
+      const userParticipation = userParticipations.find(p => p.chatId === chat.id);
+      const lastReadAt = userParticipation?.lastReadAt;
+      
+      let unreadCount = 0;
+      if (lastReadAt) {
+        const unreadMessages = await db.select()
+          .from(chatMessages)
+          .where(and(
+            eq(chatMessages.chatId, chat.id),
+            sql`${chatMessages.timestamp} > ${lastReadAt}`
+          ));
+        unreadCount = unreadMessages.length;
+      } else {
+        // 如果从未读过，所有消息都是未读
+        const allMessages = await db.select()
+          .from(chatMessages)
+          .where(eq(chatMessages.chatId, chat.id));
+        unreadCount = allMessages.length;
+      }
+      
+      return {
+        ...chat,
+        participants,
+        lastMessage,
+        unreadCount
+      };
+    }));
+    
+    return result;
+  }
+  
+  async getOrCreateDirectChat(userId1: string, userId2: string): Promise<Chat> {
+    // 查找这两个用户之间的私聊
+    const user1Chats = await db.select()
+      .from(chatParticipants)
+      .where(eq(chatParticipants.userId, userId1));
+    
+    const user2Chats = await db.select()
+      .from(chatParticipants)
+      .where(eq(chatParticipants.userId, userId2));
+    
+    // 找出两人共同参与的聊天室
+    const commonChatIds = user1Chats
+      .filter(p1 => user2Chats.some(p2 => p2.chatId === p1.chatId))
+      .map(p => p.chatId);
+    
+    if (commonChatIds.length > 0) {
+      // 检查是否是私聊（direct）
+      for (const chatId of commonChatIds) {
+        const chat = await db.select().from(chats).where(eq(chats.id, chatId)).limit(1);
+        if (chat[0] && chat[0].type === 'direct') {
+          return chat[0];
+        }
+      }
+    }
+    
+    // 不存在私聊，创建新的
+    const newChat = await this.createChat({
+      type: 'direct',
+      name: null,
+      createdBy: userId1
+    });
+    
+    // 添加两个成员
+    await this.addChatParticipant({
+      chatId: newChat.id,
+      userId: userId1,
+      role: 'owner'
+    });
+    
+    await this.addChatParticipant({
+      chatId: newChat.id,
+      userId: userId2,
+      role: 'member'
+    });
+    
+    return newChat;
+  }
+  
+  // Chat participant methods
+  async addChatParticipant(participant: InsertChatParticipant): Promise<ChatParticipant> {
+    const result = await db.insert(chatParticipants).values(participant).returning();
+    return result[0];
+  }
+  
+  async removeChatParticipant(chatId: string, userId: string): Promise<boolean> {
+    const result = await db.delete(chatParticipants)
+      .where(and(
+        eq(chatParticipants.chatId, chatId),
+        eq(chatParticipants.userId, userId)
+      ))
+      .returning();
+    return result.length > 0;
+  }
+  
+  async getChatParticipants(chatId: string): Promise<ChatParticipant[]> {
+    return await db.select()
+      .from(chatParticipants)
+      .where(eq(chatParticipants.chatId, chatId));
+  }
+  
+  async isUserInChat(chatId: string, userId: string): Promise<boolean> {
+    const result = await db.select()
+      .from(chatParticipants)
+      .where(and(
+        eq(chatParticipants.chatId, chatId),
+        eq(chatParticipants.userId, userId)
+      ))
+      .limit(1);
+    return result.length > 0;
+  }
+  
+  // User search methods
+  async searchUsers(keyword: string, limit: number = 20): Promise<User[]> {
+    return await db.select()
+      .from(users)
+      .where(or(
+        ilike(users.name, `%${keyword}%`),
+        ilike(users.nickname, `%${keyword}%`),
+        ilike(users.username, `%${keyword}%`)
+      ))
       .limit(limit);
   }
 }

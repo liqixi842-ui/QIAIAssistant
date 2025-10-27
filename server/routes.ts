@@ -1373,6 +1373,259 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============================================
+  // 聊天室管理 API 路由
+  // ============================================
+  
+  /**
+   * GET /api/chats
+   * 获取当前用户的聊天室列表
+   */
+  app.get("/api/chats", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const chats = await storage.getUserChats(req.session.userId);
+      
+      // 为每个聊天室获取完整的用户信息
+      const chatsWithUsers = await Promise.all(chats.map(async (chat) => {
+        const participantsWithUsers = await Promise.all(chat.participants.map(async (p) => {
+          const user = await storage.getUser(p.userId);
+          return {
+            ...p,
+            user: user ? {
+              id: user.id,
+              name: user.name,
+              nickname: user.nickname,
+              username: user.username,
+              position: user.position,
+              team: user.team
+            } : null
+          };
+        }));
+        
+        // 对于私聊，使用对方的名字作为聊天室名称
+        let displayName = chat.name;
+        if (chat.type === 'direct' && !displayName) {
+          const otherParticipant = participantsWithUsers.find(p => p.userId !== req.session.userId);
+          if (otherParticipant?.user) {
+            displayName = otherParticipant.user.nickname || otherParticipant.user.name;
+          }
+        }
+        
+        return {
+          ...chat,
+          name: displayName,
+          participants: participantsWithUsers
+        };
+      }));
+      
+      res.json({ success: true, data: chatsWithUsers });
+    } catch (error: any) {
+      console.error('获取聊天列表失败:', error);
+      res.status(500).json({ error: "获取聊天列表失败", details: error.message });
+    }
+  });
+  
+  /**
+   * POST /api/chats/create
+   * 创建群聊
+   * Body: { name: string, memberIds: string[] }
+   */
+  app.post("/api/chats/create", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const { name, memberIds } = req.body;
+      
+      if (!name || !memberIds || !Array.isArray(memberIds) || memberIds.length === 0) {
+        return res.status(400).json({ error: "请提供群组名称和成员列表" });
+      }
+      
+      // 创建群聊
+      const chat = await storage.createChat({
+        type: 'group',
+        name,
+        createdBy: req.session.userId
+      });
+      
+      // 添加创建者为owner
+      await storage.addChatParticipant({
+        chatId: chat.id,
+        userId: req.session.userId,
+        role: 'owner'
+      });
+      
+      // 添加其他成员
+      for (const memberId of memberIds) {
+        if (memberId !== req.session.userId) {
+          await storage.addChatParticipant({
+            chatId: chat.id,
+            userId: memberId,
+            role: 'member'
+          });
+        }
+      }
+      
+      res.json({ success: true, data: chat });
+    } catch (error: any) {
+      console.error('创建群聊失败:', error);
+      res.status(500).json({ error: "创建群聊失败", details: error.message });
+    }
+  });
+  
+  /**
+   * POST /api/chats/direct
+   * 创建或获取私聊
+   * Body: { userId: string }
+   */
+  app.post("/api/chats/direct", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const { userId } = req.body;
+      
+      if (!userId) {
+        return res.status(400).json({ error: "请提供对方用户ID" });
+      }
+      
+      if (userId === req.session.userId) {
+        return res.status(400).json({ error: "不能和自己创建私聊" });
+      }
+      
+      // 获取或创建私聊
+      const chat = await storage.getOrCreateDirectChat(req.session.userId, userId);
+      
+      res.json({ success: true, data: chat });
+    } catch (error: any) {
+      console.error('创建私聊失败:', error);
+      res.status(500).json({ error: "创建私聊失败", details: error.message });
+    }
+  });
+  
+  /**
+   * POST /api/chats/:chatId/participants
+   * 添加成员到群聊
+   * Body: { userIds: string[] }
+   */
+  app.post("/api/chats/:chatId/participants", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const { chatId } = req.params;
+      const { userIds } = req.body;
+      
+      if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+        return res.status(400).json({ error: "请提供要添加的用户ID列表" });
+      }
+      
+      // 检查当前用户是否在群里
+      const isInChat = await storage.isUserInChat(chatId, req.session.userId);
+      if (!isInChat) {
+        return res.status(403).json({ error: "您不在此群聊中" });
+      }
+      
+      // 添加成员
+      const addedParticipants = [];
+      for (const userId of userIds) {
+        // 检查用户是否已在群里
+        const alreadyInChat = await storage.isUserInChat(chatId, userId);
+        if (!alreadyInChat) {
+          const participant = await storage.addChatParticipant({
+            chatId,
+            userId,
+            role: 'member'
+          });
+          addedParticipants.push(participant);
+        }
+      }
+      
+      res.json({ success: true, data: addedParticipants });
+    } catch (error: any) {
+      console.error('添加成员失败:', error);
+      res.status(500).json({ error: "添加成员失败", details: error.message });
+    }
+  });
+  
+  /**
+   * GET /api/search/users
+   * 搜索用户
+   * Query: keyword
+   */
+  app.get("/api/search/users", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const keyword = req.query.keyword as string;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
+      
+      if (!keyword) {
+        return res.status(400).json({ error: "请提供搜索关键词" });
+      }
+      
+      const users = await storage.searchUsers(keyword, limit);
+      
+      // 不返回密码字段
+      const safeUsers = users.map(u => ({
+        id: u.id,
+        username: u.username,
+        name: u.name,
+        nickname: u.nickname,
+        position: u.position,
+        team: u.team,
+        role: u.role
+      }));
+      
+      res.json({ success: true, data: safeUsers });
+    } catch (error: any) {
+      console.error('搜索用户失败:', error);
+      res.status(500).json({ error: "搜索用户失败", details: error.message });
+    }
+  });
+  
+  /**
+   * GET /api/search/messages
+   * 搜索聊天消息
+   * Query: keyword
+   */
+  app.get("/api/search/messages", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const keyword = req.query.keyword as string;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      
+      if (!keyword) {
+        return res.status(400).json({ error: "请提供搜索关键词" });
+      }
+      
+      const messages = await storage.searchChatMessages(keyword, limit);
+      
+      // 只返回用户有权访问的消息（用户所在的聊天室）
+      const userChats = await storage.getUserChats(req.session.userId);
+      const userChatIds = userChats.map(c => c.id);
+      
+      const filteredMessages = messages.filter(m => userChatIds.includes(m.chatId));
+      
+      res.json({ success: true, data: filteredMessages });
+    } catch (error: any) {
+      console.error('搜索消息失败:', error);
+      res.status(500).json({ error: "搜索消息失败", details: error.message });
+    }
+  });
+
   // 获取聊天历史消息
   app.get("/api/chat/messages", async (req, res) => {
     if (!req.session.userId) {
@@ -1383,17 +1636,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const chatId = req.query.chatId as string;
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
       
-      let messages;
       if (chatId) {
-        // 按聊天室ID查询
-        messages = await storage.getChatMessagesByChatId(chatId, limit);
+        // 检查用户是否在该聊天室中
+        const isInChat = await storage.isUserInChat(chatId, req.session.userId);
+        if (!isInChat) {
+          return res.status(403).json({ error: "您不在此聊天室中" });
+        }
+        
+        // 获取聊天室消息
+        const messages = await storage.getChatMessagesByChatId(chatId, limit);
+        res.json({ success: true, data: messages.reverse() });
       } else {
-        // 查询所有消息（向后兼容）
-        messages = await storage.getAllChatMessages(limit);
+        // 查询用户所有聊天室的消息
+        const userChats = await storage.getUserChats(req.session.userId);
+        const userChatIds = userChats.map(c => c.id);
+        
+        if (userChatIds.length === 0) {
+          return res.json({ success: true, data: [] });
+        }
+        
+        // 获取所有聊天室的消息
+        const allMessages = await storage.getAllChatMessages(limit);
+        const filteredMessages = allMessages.filter(m => userChatIds.includes(m.chatId));
+        
+        res.json({ success: true, data: filteredMessages.reverse() });
       }
-      
-      // 反转顺序，最新的在最后
-      res.json({ success: true, data: messages.reverse() });
     } catch (error: any) {
       console.error('获取聊天消息失败:', error);
       res.status(500).json({ error: "获取聊天消息失败", details: error.message });
@@ -1469,6 +1736,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const timestamp = new Date().toISOString();
           const chatId = message.chatId || '1'; // 默认聊天室ID为'1'（销售团队）
 
+          // 检查发送者是否在聊天室中
+          try {
+            const isInChat = await storage.isUserInChat(chatId, sender.userId);
+            if (!isInChat) {
+              ws.send(JSON.stringify({
+                type: 'error',
+                message: '您不在此聊天室中'
+              }));
+              return;
+            }
+          } catch (error) {
+            console.error('检查聊天室成员失败:', error);
+            return;
+          }
+
           // 保存消息到数据库（包含chatId）
           try {
             await storage.createChatMessage({
@@ -1481,8 +1763,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.error('保存聊天消息失败:', error);
           }
 
-          // 广播消息给所有客户端（包括发送者，并包含chatId用于前端过滤）
-          broadcastToAll({
+          // 获取聊天室所有成员
+          const participants = await storage.getChatParticipants(chatId);
+          const participantUserIds = participants.map(p => p.userId);
+
+          // 只广播给聊天室成员
+          broadcastToParticipants(participantUserIds, {
             type: 'chat',
             chatId,
             messageId: message.messageId,
@@ -1534,6 +1820,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const data = JSON.stringify(message);
     clients.forEach((user, client) => {
       if (client.readyState === WebSocket.OPEN) {
+        client.send(data);
+      }
+    });
+  }
+  
+  // 广播消息给指定的用户列表（按userId过滤）
+  function broadcastToParticipants(userIds: string[], message: any) {
+    const data = JSON.stringify(message);
+    clients.forEach((user, client) => {
+      if (userIds.includes(user.userId) && client.readyState === WebSocket.OPEN) {
         client.send(data);
       }
     });

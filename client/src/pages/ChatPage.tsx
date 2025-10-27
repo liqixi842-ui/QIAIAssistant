@@ -1,15 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Search, Send, Plus, Users, User as UserIcon, X, Wifi, WifiOff, ArrowDown } from 'lucide-react';
+import { Search, Send, Plus, Users, Wifi, WifiOff, ArrowDown } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { useWebSocket } from '@/contexts/WebSocketContext';
-import type { ChatMessage } from '@shared/schema';
+import { apiRequest, queryClient } from '@/lib/queryClient';
 import {
   Dialog,
   DialogContent,
@@ -20,673 +20,575 @@ import {
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 
-interface Contact {
+// 类型定义
+interface ChatRoom {
   id: string;
-  name: string;
-  lastMessage: string;
-  time: string;
-  unread?: number;
-  isGroup?: boolean;
-  members?: number;
+  type: 'direct' | 'group';
+  name: string | null;
+  participants: Array<{
+    userId: string;
+    role: string;
+    user: {
+      id: string;
+      name: string;
+      nickname: string | null;
+      username: string;
+      position: string | null;
+      team: string | null;
+    } | null;
+  }>;
+  lastMessage?: {
+    content: string;
+    timestamp: string;
+  };
+  unreadCount: number;
 }
 
 interface Message {
   id: string;
-  sender: string;
+  chatId: string;
+  senderId: string;
+  senderName: string;
   content: string;
-  time: string;
-  isMine: boolean;
-  chatId: string; // 标识消息属于哪个对话
+  timestamp: string;
 }
 
-interface SystemUser {
+interface SearchUser {
   id: string;
-  name: string;
   username: string;
-  nickname: string;
-  position: string;
-  team?: string;
-  isOnline: boolean;
+  name: string;
+  nickname: string | null;
+  position: string | null;
+  team: string | null;
+  role: string;
 }
-
-const allSystemUsers: SystemUser[] = [
-  // 主管团队
-  { id: '1', name: '李主管', username: 'lzg', nickname: '老李', position: '主管', isOnline: true },
-  
-  // 总监团队
-  { id: '2', name: '赵总监', username: 'zzj', nickname: '赵哥', position: '总监', team: '赵总监团队', isOnline: true },
-  { id: '3', name: '钱总监', username: 'qzj', nickname: '钱姐', position: '总监', team: '钱总监团队', isOnline: false },
-  
-  // 经理层
-  { id: '4', name: '王经理', username: 'wjl', nickname: '小王', position: '经理', team: '赵总监团队', isOnline: true },
-  { id: '5', name: '孙经理', username: 'sjl', nickname: '老孙', position: '经理', team: '赵总监团队', isOnline: true },
-  { id: '6', name: '周经理', username: 'zjl', nickname: '周周', position: '经理', team: '钱总监团队', isOnline: false },
-  
-  // 业务团队
-  { id: '7', name: '张三', username: 'zhangsan', nickname: '小张', position: '业务', team: '王经理团队', isOnline: true },
-  { id: '8', name: '李四', username: 'lisi', nickname: '阿四', position: '业务', team: '王经理团队', isOnline: true },
-  { id: '9', name: '王五', username: 'wangwu', nickname: '老王', position: '业务', team: '孙经理团队', isOnline: false },
-  { id: '10', name: '赵六', username: 'zhaoliu', nickname: '小赵', position: '业务', team: '孙经理团队', isOnline: true },
-  { id: '11', name: '陈七', username: 'chenqi', nickname: '阿七', position: '业务', team: '周经理团队', isOnline: true },
-  { id: '12', name: '刘八', username: 'liuba', nickname: '八爷', position: '后勤', isOnline: false },
-  
-  // 其他部门用户
-  { id: '13', name: '吴九', username: 'wujiu', nickname: '小吴', position: '业务', team: '其他团队', isOnline: true },
-  { id: '14', name: '郑十', username: 'zhengshi', nickname: '老郑', position: '业务', team: '其他团队', isOnline: false },
-  { id: '15', name: '孙莉', username: 'sunli', nickname: 'Lily', position: '业务', team: '其他团队', isOnline: true },
-];
-
-const mockContacts: Contact[] = [
-  { id: '1', name: '销售团队', lastMessage: '今天的业绩不错！', time: '10:23', unread: 3, isGroup: true, members: 8 },
-  { id: '2', name: '高端客户组', lastMessage: '明天开会讨论方案', time: '昨天', isGroup: true, members: 5 },
-  { id: '3', name: '张明', lastMessage: '好的，谢谢', time: '昨天', isGroup: false },
-  { id: '4', name: '李华', lastMessage: '明天见', time: '周一', isGroup: false }
-];
-
-const mockMessages: Message[] = [
-  { id: '1', sender: '张伟', content: '大家早上好！', time: '09:00', isMine: false, chatId: '1' },
-  { id: '2', sender: '我', content: '早上好！', time: '09:01', isMine: true, chatId: '1' },
-  { id: '3', sender: '李强', content: '今天的目标是多少？', time: '09:15', isMine: false, chatId: '1' },
-  { id: '4', sender: '我', content: '我今天计划联系50个客户', time: '09:16', isMine: true, chatId: '1' },
-  { id: '5', sender: '王丽', content: '大家加油！本周目标是200个开户', time: '09:20', isMine: false, chatId: '1' },
-];
 
 export default function ChatPage() {
   const { toast } = useToast();
-  const { isConnected, sendMessage, lastMessage, onlineUsers: wsOnlineUsers } = useWebSocket();
+  const { isConnected, sendMessage, lastMessage, onlineUsers } = useWebSocket();
   
-  const [selectedContact, setSelectedContact] = useState<Contact>(mockContacts[0]);
-  const [contacts, setContacts] = useState<Contact[]>(mockContacts);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState<Message[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [userSearchTerm, setUserSearchTerm] = useState('');
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [groupName, setGroupName] = useState('');
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [showUserList, setShowUserList] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [showScrollButton, setShowScrollButton] = useState(false);
 
   const currentUserStr = localStorage.getItem('currentUser');
   const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
   
-  // 用于自动滚动到底部
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const isUserAtBottomRef = useRef(true); // 追踪用户是否在底部
+  const isUserAtBottomRef = useRef(true);
 
-  // 自动滚动到底部（仅当用户在底部时）
+  // 获取聊天列表
+  const { data: chatsData, isLoading: chatsLoading } = useQuery<{ success: boolean; data: ChatRoom[] }>({
+    queryKey: ['/api/chats'],
+    refetchInterval: 5000, // 每5秒刷新一次
+  });
+
+  const chats = chatsData?.data || [];
+  const selectedChat = chats.find(c => c.id === selectedChatId);
+
+  // 获取当前聊天室的消息
+  const { data: messagesData, isLoading: messagesLoading } = useQuery<{ success: boolean; data: Message[] }>({
+    queryKey: ['/api/chat/messages', selectedChatId],
+    queryFn: selectedChatId
+      ? () => fetch(`/api/chat/messages?chatId=${selectedChatId}`).then(r => r.json())
+      : undefined,
+    enabled: !!selectedChatId,
+  });
+
+  // 搜索用户
+  const { data: searchUsersData } = useQuery<{ success: boolean; data: SearchUser[] }>({
+    queryKey: ['/api/search/users', userSearchTerm],
+    queryFn: userSearchTerm
+      ? () => fetch(`/api/search/users?keyword=${encodeURIComponent(userSearchTerm)}`).then(r => r.json())
+      : undefined,
+    enabled: !!userSearchTerm && userSearchTerm.length > 0,
+  });
+
+  const searchUsers = searchUsersData?.data || [];
+
+  // 创建群聊
+  const createGroupMutation = useMutation({
+    mutationFn: async (data: { name: string; memberIds: string[] }) => {
+      const response = await fetch('/api/chats/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/chats'] });
+      setShowCreateGroup(false);
+      setGroupName('');
+      setSelectedMembers([]);
+      toast({ title: '成功', description: '群组创建成功' });
+    },
+    onError: () => {
+      toast({ title: '错误', description: '创建群组失败', variant: 'destructive' });
+    },
+  });
+
+  // 创建私聊
+  const createDirectChatMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const response = await fetch('/api/chats/direct', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/chats'] });
+      setSelectedChatId(data.data.id);
+      setShowUserList(false);
+      toast({ title: '成功', description: '对话已创建' });
+    },
+    onError: () => {
+      toast({ title: '错误', description: '创建对话失败', variant: 'destructive' });
+    },
+  });
+
+  // 加载消息历史
+  useEffect(() => {
+    if (messagesData?.data) {
+      setMessages(messagesData.data);
+    }
+  }, [messagesData]);
+
+  // 处理WebSocket消息
+  useEffect(() => {
+    if (lastMessage?.type === 'chat' && lastMessage.chatId) {
+      const newMessage: Message = {
+        id: lastMessage.messageId || Date.now().toString(),
+        chatId: lastMessage.chatId,
+        senderId: lastMessage.senderId || '',
+        senderName: lastMessage.sender,
+        content: lastMessage.content,
+        timestamp: new Date().toISOString(),
+      };
+
+      // 只添加属于当前聊天室的消息
+      if (lastMessage.chatId === selectedChatId) {
+        setMessages(prev => {
+          // 避免重复
+          if (prev.some(m => m.id === newMessage.id)) return prev;
+          return [...prev, newMessage];
+        });
+      }
+
+      // 刷新聊天列表（更新最后一条消息）
+      queryClient.invalidateQueries({ queryKey: ['/api/chats'] });
+    }
+  }, [lastMessage, selectedChatId]);
+
+  // 自动滚动到底部
   const scrollToBottom = () => {
-    if (!isUserAtBottomRef.current) return; // 用户不在底部时不滚动
+    if (!isUserAtBottomRef.current) return;
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     setShowScrollButton(false);
   };
 
-  // 监听滚动事件，判断是否显示"回到底部"按钮
-  const handleScroll = (e: Event) => {
-    const target = e.target as HTMLDivElement;
-    const { scrollTop, scrollHeight, clientHeight } = target;
-    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-    
-    // 更新用户是否在底部的状态
-    isUserAtBottomRef.current = isNearBottom;
-    setShowScrollButton(!isNearBottom);
-  };
-
-  // 绑定滚动监听
   useEffect(() => {
-    const scrollContainer = scrollAreaRef.current;
-    if (scrollContainer) {
-      scrollContainer.addEventListener('scroll', handleScroll);
-      return () => scrollContainer.removeEventListener('scroll', handleScroll);
-    }
-  }, []);
+    scrollToBottom();
+  }, [messages]);
 
-  // 格式化日期+时间（类似Telegram）
-  const formatDateTime = (timestamp: string) => {
-    const date = new Date(timestamp);
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
+  // 监听滚动
+  useEffect(() => {
+    const scrollArea = scrollAreaRef.current;
+    if (!scrollArea) return;
 
-    const dateStr = date.toLocaleDateString('zh-CN', { 
-      year: 'numeric', 
-      month: '2-digit', 
-      day: '2-digit' 
-    });
-    const timeStr = date.toLocaleTimeString('zh-CN', { 
-      hour: '2-digit', 
-      minute: '2-digit' 
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = scrollArea;
+      const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
+      isUserAtBottomRef.current = isAtBottom;
+      setShowScrollButton(!isAtBottom && messages.length > 0);
+    };
+
+    scrollArea.addEventListener('scroll', handleScroll);
+    return () => scrollArea.removeEventListener('scroll', handleScroll);
+  }, [messages.length]);
+
+  // 发送消息
+  const handleSendMessage = () => {
+    if (!message.trim() || !selectedChatId) return;
+
+    sendMessage({
+      type: 'chat',
+      chatId: selectedChatId,
+      content: message.trim(),
+      messageId: `${Date.now()}-${Math.random()}`,
     });
 
-    // 如果是今天，只显示时间
-    if (date.toDateString() === today.toDateString()) {
-      return timeStr;
-    }
-    // 如果是昨天，显示"昨天 + 时间"
-    if (date.toDateString() === yesterday.toDateString()) {
-      return `昨天 ${timeStr}`;
-    }
-    // 其他日期显示完整日期+时间
-    return `${dateStr} ${timeStr}`;
+    setMessage('');
   };
 
-  // 加载历史消息 - 根据选中的聊天室ID查询
-  const { data: historyData } = useQuery<{ success: boolean; data: ChatMessage[] }>({
-    queryKey: ['/api/chat/messages', selectedContact.id],
-    queryFn: async () => {
-      const response = await fetch(`/api/chat/messages?chatId=${selectedContact.id}`, {
-        credentials: 'include' // 关键：发送session cookie
-      });
-      if (!response.ok) throw new Error('Failed to fetch messages');
-      return response.json();
-    },
-    enabled: !!currentUser && selectedContact.id === '1', // 只有团队群聊（id=1）从数据库加载
-    refetchOnWindowFocus: false, // 禁用窗口聚焦时自动重新获取
-    staleTime: 60000, // 数据保持新鲜1分钟
-  });
-
-  // 初始化历史消息
-  useEffect(() => {
-    // 只有当前选中团队群聊（id=1）且有历史数据时才应用
-    if (selectedContact.id === '1' && historyData?.success && historyData.data && currentUser) {
-      const loadedMessages: Message[] = historyData.data.map((msg) => ({
-        id: msg.id,
-        sender: msg.senderName,
-        content: msg.content,
-        time: formatDateTime(msg.timestamp),
-        isMine: msg.senderId === currentUser.id,
-        chatId: msg.chatId || selectedContact.id // 使用数据库中的chatId
-      }));
-      
-      // 使用消息去重合并：保留WebSocket实时消息，补充数据库历史消息
-      setMessages(prev => {
-        // 创建现有消息ID的Set用于快速查找
-        const existingIds = new Set(prev.map(m => m.id));
-        // 只添加不存在的历史消息
-        const newMessages = loadedMessages.filter(msg => !existingIds.has(msg.id));
-        // 合并并按时间排序
-        const merged = [...prev, ...newMessages].sort((a, b) => {
-          // 简单的时间比较，假设ID是时间戳生成的
-          return a.id.localeCompare(b.id);
-        });
-        return merged;
-      });
-      
-      // 加载历史消息后滚动到底部
-      setTimeout(scrollToBottom, 100);
-    } else if (selectedContact.id !== '1') {
-      // 切换到其他聊天室时清空历史记录（暂无持久化）
-      setMessages([]);
-    }
-  }, [historyData, currentUser, selectedContact.id]);
-
-  // 监听WebSocket消息
-  useEffect(() => {
-    if (!lastMessage) return;
-
-    console.log('收到WebSocket消息:', lastMessage);
-
-    if (lastMessage.type === 'user_joined') {
-      toast({
-        title: "用户上线",
-        description: `${lastMessage.user.nickname} 加入了聊天`,
-      });
-    }
-
-    if (lastMessage.type === 'user_left') {
-      toast({
-        title: "用户离线",
-        description: `${lastMessage.user.nickname} 离开了聊天`,
-      });
-    }
-
-    if (lastMessage.type === 'chat' && currentUser) {
-      // 接收新消息 - 添加去重逻辑，并使用服务器返回的chatId
-      const messageChatId = lastMessage.chatId || '1'; // 默认为团队群聊
-      
-      console.log('处理聊天消息:', {
-        messageChatId,
-        selectedContactId: selectedContact.id,
-        willDisplay: messageChatId === selectedContact.id
-      });
-      
-      const newMessage: Message = {
-        id: lastMessage.messageId,
-        sender: lastMessage.sender,
-        content: lastMessage.content,
-        time: formatDateTime(lastMessage.timestamp),
-        isMine: lastMessage.senderId === currentUser.id,
-        chatId: messageChatId
-      };
-
-      // 只在消息属于当前选中的聊天时才添加到列表
-      if (messageChatId === selectedContact.id) {
-        // 去重：检查消息ID是否已存在
-        setMessages(prev => {
-          const exists = prev.some(msg => msg.id === newMessage.id);
-          if (exists) {
-            console.log('消息已存在，跳过:', newMessage.id);
-            return prev;
-          }
-          console.log('添加新消息到列表:', newMessage);
-          // 只在是自己发送的消息时才自动滚动到底部
-          if (newMessage.isMine) {
-            setTimeout(scrollToBottom, 100);
-          }
-          return [...prev, newMessage];
-        });
-      }
-    }
-  }, [lastMessage, currentUser, selectedContact.id]);
-
-  const filteredContacts = contacts.filter(contact =>
-    contact.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const filteredUsers = allSystemUsers.filter(user =>
-    user.name.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
-    user.username.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
-    user.nickname.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
-    user.position.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
-    (user.team && user.team.toLowerCase().includes(userSearchTerm.toLowerCase()))
-  );
-
-  const handleSend = () => {
-    if (message.trim() && isConnected) {
-      // 只允许在团队群聊（id=1）发送消息，其他聊天室提示功能开发中
-      if (selectedContact.id !== '1') {
-        toast({
-          title: "提示",
-          description: "此对话功能正在开发中，请使用销售团队群聊",
-          variant: "default"
-        });
-        return;
-      }
-
-      const messageId = Date.now().toString();
-      
-      // 通过WebSocket发送消息，包含chatId（服务器会广播给所有人）
-      sendMessage({
-        type: 'chat',
-        chatId: selectedContact.id,
-        messageId,
-        content: message
-      });
-
-      // 清空输入框，不立即添加消息（等待服务器广播）
-      setMessage('');
-    } else if (!isConnected) {
-      toast({
-        title: "发送失败",
-        description: "未连接到服务器",
-        variant: "destructive"
-      });
-    }
-  };
-
+  // 创建群聊
   const handleCreateGroup = () => {
-    console.log('Creating group:', groupName, 'with members:', selectedMembers);
-    setShowCreateGroup(false);
-    setGroupName('');
-    setSelectedMembers([]);
+    if (!groupName.trim() || selectedMembers.length === 0) {
+      toast({ title: '错误', description: '请输入群组名称并选择成员', variant: 'destructive' });
+      return;
+    }
+
+    createGroupMutation.mutate({
+      name: groupName.trim(),
+      memberIds: selectedMembers,
+    });
   };
 
-  const handleMemberSelect = (memberId: string) => {
+  // 开始私聊
+  const handleStartDirectChat = (userId: string) => {
+    createDirectChatMutation.mutate(userId);
+  };
+
+  // 切换成员选择
+  const toggleMemberSelection = (userId: string) => {
     setSelectedMembers(prev =>
-      prev.includes(memberId)
-        ? prev.filter(id => id !== memberId)
-        : [...prev, memberId]
+      prev.includes(userId)
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId]
     );
   };
 
-  const handleStartPrivateChat = (user: SystemUser) => {
-    // 检查是否已经有与该用户的聊天
-    const existingContact = contacts.find(c => c.id === `user-${user.id}` && !c.isGroup);
-    
-    if (existingContact) {
-      // 如果已经存在，直接切换到该聊天
-      setSelectedContact(existingContact);
+  // 过滤聊天列表
+  const filteredChats = chats.filter(chat =>
+    chat.name?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // 格式化时间
+  const formatTime = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+
+    if (days === 0) {
+      return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    } else if (days === 1) {
+      return '昨天';
+    } else if (days < 7) {
+      return `${days}天前`;
     } else {
-      // 创建新的私聊会话
-      const newContact: Contact = {
-        id: `user-${user.id}`,
-        name: `${user.name}（${user.nickname}）`,
-        lastMessage: '开始聊天',
-        time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
-        isGroup: false
-      };
-      
-      setContacts(prev => [newContact, ...prev]);
-      setSelectedContact(newContact);
-      // 注意：不清空messages，保留团队聊天历史
+      return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
     }
-    
-    setShowUserList(false);
-    console.log('Starting private chat with:', user.name, user.username, user.nickname);
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-3xl font-bold">团队群聊</h1>
-          <Badge variant={isConnected ? "default" : "destructive"} data-testid="badge-connection-status">
-            {isConnected ? (
-              <>
-                <Wifi className="h-3 w-3 mr-1" />
-                已连接
-              </>
-            ) : (
-              <>
-                <WifiOff className="h-3 w-3 mr-1" />
-                断开
-              </>
-            )}
-          </Badge>
-        </div>
-        <div className="flex gap-2">
-          <Dialog open={showUserList} onOpenChange={setShowUserList}>
-            <DialogTrigger asChild>
-              <Button variant="outline" data-testid="button-find-user">
-                <Search className="h-4 w-4 mr-2" />
-                找人
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>查找用户</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="输入姓名、用户名或花名..."
-                    value={userSearchTerm}
-                    onChange={(e) => setUserSearchTerm(e.target.value)}
-                    className="pl-10"
-                    data-testid="input-search-user"
-                  />
-                </div>
-                <ScrollArea className="h-96">
-                  <div className="space-y-2">
-                    {filteredUsers.map((user) => (
-                      <div
-                        key={user.id}
-                        className="flex items-center justify-between p-3 rounded-md hover-elevate cursor-pointer"
-                        onClick={() => handleStartPrivateChat(user)}
-                        data-testid={`user-${user.id}`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="relative">
-                            <Avatar>
-                              <AvatarFallback>{user.name[0]}</AvatarFallback>
-                            </Avatar>
-                            {user.isOnline && (
-                              <div className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 border-2 border-background" />
-                            )}
-                          </div>
-                          <div>
-                            <p className="font-medium">{user.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              @{user.username} · {user.nickname} · {user.position}
-                              {user.team && ` · ${user.team}`}
-                            </p>
-                          </div>
-                        </div>
-                        <Button size="sm" variant="ghost">
-                          <Send className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </div>
-            </DialogContent>
-          </Dialog>
-
-          <Dialog open={showCreateGroup} onOpenChange={setShowCreateGroup}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-create-group">
-                <Plus className="h-4 w-4 mr-2" />
-                创建群聊
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>创建新群聊</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label>群聊名称</Label>
-                  <Input
-                    placeholder="请输入群聊名称"
-                    value={groupName}
-                    onChange={(e) => setGroupName(e.target.value)}
-                    data-testid="input-group-name"
-                  />
-                </div>
-                <div>
-                  <Label>选择成员 ({selectedMembers.length} 人)</Label>
-                  <div className="relative mt-2">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+    <div className="flex h-full gap-4 p-4" data-testid="page-chat">
+      {/* 左侧：联系人列表 */}
+      <Card className="w-80 flex flex-col p-0">
+        <div className="p-4 border-b">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold" data-testid="text-chat-title">消息</h2>
+            <div className="flex gap-2">
+              <Dialog open={showUserList} onOpenChange={setShowUserList}>
+                <DialogTrigger asChild>
+                  <Button size="icon" variant="ghost" data-testid="button-new-chat">
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>新建对话</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
                     <Input
-                      placeholder="输入姓名、用户名或花名..."
+                      placeholder="搜索用户..."
                       value={userSearchTerm}
                       onChange={(e) => setUserSearchTerm(e.target.value)}
-                      className="pl-10"
-                      data-testid="input-search-group-member"
+                      data-testid="input-search-users"
                     />
-                  </div>
-                </div>
-                <ScrollArea className="h-64 border rounded-md p-2">
-                  <div className="space-y-2">
-                    {filteredUsers.map((user) => (
-                      <div
-                        key={user.id}
-                        className="flex items-center gap-3 p-2 rounded-md hover-elevate"
-                        data-testid={`checkbox-user-${user.id}`}
-                      >
-                        <Checkbox
-                          checked={selectedMembers.includes(user.id)}
-                          onCheckedChange={() => handleMemberSelect(user.id)}
-                        />
-                        <div className="relative">
-                          <Avatar className="h-8 w-8">
-                            <AvatarFallback>{user.name[0]}</AvatarFallback>
-                          </Avatar>
-                          {user.isOnline && (
-                            <div className="absolute bottom-0 right-0 h-2 w-2 rounded-full bg-green-500 border border-background" />
-                          )}
+                    <ScrollArea className="h-96">
+                      {searchUsers.map((user) => (
+                        <div
+                          key={user.id}
+                          className="flex items-center justify-between p-2 hover-elevate active-elevate-2 rounded cursor-pointer"
+                          onClick={() => handleStartDirectChat(user.id)}
+                          data-testid={`user-item-${user.id}`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-8 w-8">
+                              <AvatarFallback>
+                                {(user.nickname || user.name).charAt(0)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <div className="font-medium">{user.nickname || user.name}</div>
+                              <div className="text-sm text-muted-foreground">
+                                {user.position} {user.team && `· ${user.team}`}
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">{user.name}（{user.nickname}）</p>
-                          <p className="text-xs text-muted-foreground">@{user.username} · {user.position}</p>
-                        </div>
-                      </div>
-                    ))}
+                      ))}
+                    </ScrollArea>
                   </div>
-                </ScrollArea>
-                {selectedMembers.length > 0 && (
-                  <div className="border rounded-md p-2">
-                    <p className="text-sm text-muted-foreground mb-2">已选择:</p>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedMembers.map((memberId) => {
-                        const user = allSystemUsers.find(u => u.id === memberId);
-                        return (
-                          <Badge key={memberId} variant="secondary">
-                            {user?.name}（{user?.nickname}）
-                            <button
-                              onClick={() => handleMemberSelect(memberId)}
-                              className="ml-1 hover-elevate"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </Badge>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-                <Button
-                  className="w-full"
-                  onClick={handleCreateGroup}
-                  disabled={!groupName || selectedMembers.length === 0}
-                  data-testid="button-confirm-create-group"
-                >
-                  创建群聊
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
+                </DialogContent>
+              </Dialog>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[calc(100vh-200px)]">
-        <Card className="p-4 space-y-4 h-full flex flex-col">
+              <Dialog open={showCreateGroup} onOpenChange={setShowCreateGroup}>
+                <DialogTrigger asChild>
+                  <Button size="icon" variant="ghost" data-testid="button-create-group">
+                    <Users className="h-4 w-4" />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>创建群聊</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <Label>群组名称</Label>
+                      <Input
+                        placeholder="输入群组名称"
+                        value={groupName}
+                        onChange={(e) => setGroupName(e.target.value)}
+                        data-testid="input-group-name"
+                      />
+                    </div>
+                    <div>
+                      <Label>搜索成员</Label>
+                      <Input
+                        placeholder="搜索用户..."
+                        value={userSearchTerm}
+                        onChange={(e) => setUserSearchTerm(e.target.value)}
+                        data-testid="input-search-members"
+                      />
+                    </div>
+                    <ScrollArea className="h-64">
+                      {searchUsers.map((user) => (
+                        <div
+                          key={user.id}
+                          className="flex items-center gap-2 p-2 hover-elevate rounded"
+                          data-testid={`member-item-${user.id}`}
+                        >
+                          <Checkbox
+                            checked={selectedMembers.includes(user.id)}
+                            onCheckedChange={() => toggleMemberSelection(user.id)}
+                            data-testid={`checkbox-member-${user.id}`}
+                          />
+                          <Avatar className="h-8 w-8">
+                            <AvatarFallback>
+                              {(user.nickname || user.name).charAt(0)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <div className="font-medium">{user.nickname || user.name}</div>
+                            <div className="text-sm text-muted-foreground">
+                              {user.position}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </ScrollArea>
+                    <Button
+                      onClick={handleCreateGroup}
+                      disabled={!groupName.trim() || selectedMembers.length === 0}
+                      className="w-full"
+                      data-testid="button-submit-group"
+                    >
+                      创建群组 ({selectedMembers.length}人)
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="搜索聊天..."
+              placeholder="搜索对话..."
+              className="pl-8"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-              data-testid="input-search-chat"
+              data-testid="input-search-chats"
             />
           </div>
-          <ScrollArea className="flex-1">
-            <div className="space-y-2">
-              {filteredContacts.map((contact) => (
+        </div>
+
+        <ScrollArea className="flex-1">
+          {chatsLoading ? (
+            <div className="p-4 text-center text-muted-foreground">加载中...</div>
+          ) : filteredChats.length === 0 ? (
+            <div className="p-4 text-center text-muted-foreground">暂无对话</div>
+          ) : (
+            <div className="p-2">
+              {filteredChats.map((chat) => (
                 <div
-                  key={contact.id}
-                  onClick={() => setSelectedContact(contact)}
-                  className={`p-3 rounded-md cursor-pointer hover-elevate ${
-                    selectedContact.id === contact.id ? 'bg-accent' : ''
+                  key={chat.id}
+                  className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer hover-elevate active-elevate-2 ${
+                    selectedChatId === chat.id ? 'bg-accent' : ''
                   }`}
-                  data-testid={`contact-${contact.id}`}
+                  onClick={() => setSelectedChatId(chat.id)}
+                  data-testid={`chat-item-${chat.id}`}
                 >
-                  <div className="flex items-start gap-3">
-                    <Avatar>
-                      <AvatarFallback>
-                        {contact.isGroup ? <Users className="h-4 w-4" /> : contact.name[0]}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium text-sm truncate">{contact.name}</p>
-                          {contact.isGroup && (
-                            <Badge variant="outline" className="text-xs">
-                              {contact.members}人
-                            </Badge>
-                          )}
-                        </div>
-                        <span className="text-xs text-muted-foreground">{contact.time}</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground truncate">{contact.lastMessage}</p>
+                  <Avatar>
+                    <AvatarFallback>
+                      {chat.type === 'group' ? <Users className="h-4 w-4" /> : chat.name?.charAt(0)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium truncate">{chat.name || '未命名对话'}</span>
+                      {chat.lastMessage && (
+                        <span className="text-xs text-muted-foreground">
+                          {formatTime(chat.lastMessage.timestamp)}
+                        </span>
+                      )}
                     </div>
-                    {contact.unread && (
-                      <div className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center">
-                        {contact.unread}
-                      </div>
-                    )}
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground truncate">
+                        {chat.lastMessage?.content || '暂无消息'}
+                      </span>
+                      {chat.unreadCount > 0 && (
+                        <Badge variant="default" className="ml-2">
+                          {chat.unreadCount}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
-          </ScrollArea>
-        </Card>
+          )}
+        </ScrollArea>
+      </Card>
 
-        <Card className="lg:col-span-2 p-0 flex flex-col h-full overflow-hidden">
-          <div className="border-b px-4 py-3 flex items-center justify-between flex-shrink-0">
-            <div className="flex items-center gap-2">
-              <h3 className="font-semibold">{selectedContact.name}</h3>
-              {selectedContact.isGroup && (
-                <Badge variant="secondary">
-                  <Users className="h-3 w-3 mr-1" />
-                  {selectedContact.members}人
-                </Badge>
-              )}
+      {/* 右侧：聊天窗口 */}
+      <Card className="flex-1 flex flex-col p-0">
+        {!selectedChat ? (
+          <div className="flex-1 flex items-center justify-center text-muted-foreground">
+            <div className="text-center">
+              <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>选择一个对话开始聊天</p>
             </div>
-            {selectedContact.isGroup && (
-              <Button variant="outline" size="sm" data-testid="button-group-info">
-                群成员
-              </Button>
-            )}
           </div>
-          <div className="flex-1 relative overflow-hidden">
-            <div 
-              ref={scrollAreaRef}
-              className="absolute inset-0 overflow-y-auto px-4"
-              style={{ scrollBehavior: 'smooth' }}
-            >
-              <div className="space-y-4 py-4">
-              {selectedContact.id === '1' ? (
-                messages.filter(msg => msg.chatId === selectedContact.id).map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`flex ${msg.isMine ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div className={`max-w-[70%] space-y-1`}>
-                      {!msg.isMine && selectedContact.isGroup && (
-                        <p className="text-xs text-muted-foreground">{msg.sender}</p>
-                      )}
-                      <div
-                        className={`p-3 rounded-md ${
-                          msg.isMine
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-muted'
-                        }`}
-                      >
-                        <p className="text-sm">{msg.content}</p>
-                      </div>
-                      <p className="text-xs text-muted-foreground">{msg.time}</p>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="flex items-center justify-center h-full text-muted-foreground">
-                  <p className="text-sm">此对话功能正在开发中，当前仅支持团队群聊</p>
+        ) : (
+          <>
+            {/* 聊天头部 */}
+            <div className="flex items-center justify-between p-4 border-b">
+              <div className="flex items-center gap-3">
+                <Avatar>
+                  <AvatarFallback>
+                    {selectedChat.type === 'group' ? <Users className="h-4 w-4" /> : selectedChat.name?.charAt(0)}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <h3 className="font-semibold" data-testid="text-chat-name">
+                    {selectedChat.name || '未命名对话'}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedChat.type === 'group'
+                      ? `${selectedChat.participants.length} 位成员`
+                      : selectedChat.participants.find(p => p.userId !== currentUser?.id)?.user?.position || ''}
+                  </p>
                 </div>
-              )}
-              {/* 用于自动滚动到底部的锚点 */}
-              <div ref={messagesEndRef} />
+              </div>
+              <div className="flex items-center gap-2">
+                {isConnected ? (
+                  <Badge variant="outline" className="gap-1" data-testid="badge-connected">
+                    <Wifi className="h-3 w-3" />
+                    在线
+                  </Badge>
+                ) : (
+                  <Badge variant="destructive" className="gap-1" data-testid="badge-disconnected">
+                    <WifiOff className="h-3 w-3" />
+                    离线
+                  </Badge>
+                )}
               </div>
             </div>
-            {/* Telegram风格的回到底部按钮 */}
+
+            {/* 消息列表 */}
+            <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
+              {messagesLoading ? (
+                <div className="text-center text-muted-foreground">加载消息中...</div>
+              ) : messages.length === 0 ? (
+                <div className="text-center text-muted-foreground">暂无消息</div>
+              ) : (
+                <div className="space-y-4">
+                  {messages.map((msg) => {
+                    const isMine = msg.senderId === currentUser?.id;
+                    return (
+                      <div
+                        key={msg.id}
+                        className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}
+                        data-testid={`message-${msg.id}`}
+                      >
+                        <div className={`max-w-[70%] ${isMine ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
+                          {!isMine && (
+                            <span className="text-xs text-muted-foreground px-2">
+                              {msg.senderName}
+                            </span>
+                          )}
+                          <div
+                            className={`rounded-lg px-4 py-2 ${
+                              isMine
+                                ? 'bg-primary text-primary-foreground'
+                                : 'bg-muted'
+                            }`}
+                          >
+                            {msg.content}
+                          </div>
+                          <span className="text-xs text-muted-foreground px-2">
+                            {formatTime(msg.timestamp)}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div ref={messagesEndRef} />
+                </div>
+              )}
+            </ScrollArea>
+
+            {/* 回到底部按钮 */}
             {showScrollButton && (
               <Button
                 size="icon"
-                className="absolute bottom-20 right-6 rounded-full shadow-lg z-50"
+                variant="outline"
+                className="absolute bottom-24 right-8 rounded-full shadow-lg"
                 onClick={() => {
-                  isUserAtBottomRef.current = true; // 标记用户回到底部
+                  isUserAtBottomRef.current = true;
                   scrollToBottom();
                 }}
-                data-testid="button-scroll-to-bottom"
+                data-testid="button-scroll-bottom"
               >
                 <ArrowDown className="h-4 w-4" />
               </Button>
             )}
-          </div>
-          <div className="border-t px-4 py-3 flex gap-2 flex-shrink-0">
-            <Input
-              placeholder={selectedContact.id === '1' ? "输入消息..." : "此对话功能开发中..."}
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-              disabled={selectedContact.id !== '1'}
-              data-testid="input-message"
-            />
-            <Button 
-              onClick={handleSend} 
-              disabled={selectedContact.id !== '1'}
-              data-testid="button-send"
-            >
-              <Send className="h-4 w-4" />
-            </Button>
-          </div>
-        </Card>
-      </div>
+
+            {/* 输入框 */}
+            <div className="p-4 border-t">
+              <div className="flex gap-2">
+                <Input
+                  placeholder="输入消息..."
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                  disabled={!isConnected}
+                  data-testid="input-message"
+                />
+                <Button
+                  onClick={handleSendMessage}
+                  disabled={!message.trim() || !isConnected}
+                  data-testid="button-send"
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
+      </Card>
     </div>
   );
 }

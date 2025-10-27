@@ -137,3 +137,38 @@ export const insertLearningMaterialSchema = createInsertSchema(learningMaterials
 
 export type InsertLearningMaterial = z.infer<typeof insertLearningMaterialSchema>;
 export type LearningMaterial = typeof learningMaterials.$inferSelect;
+
+// 聊天室表
+export const chats = pgTable("chats", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  type: text("type").notNull(), // 类型：direct（私聊）或 group（群聊）
+  name: text("name"), // 聊天室名称（私聊为null，群聊有名称）
+  createdBy: varchar("created_by").notNull(), // 创建者用户ID
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`), // 创建时间
+});
+
+export const insertChatSchema = createInsertSchema(chats).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertChat = z.infer<typeof insertChatSchema>;
+export type Chat = typeof chats.$inferSelect;
+
+// 聊天室成员表
+export const chatParticipants = pgTable("chat_participants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  chatId: varchar("chat_id").notNull(), // 聊天室ID
+  userId: varchar("user_id").notNull(), // 用户ID
+  role: text("role").notNull().default("member"), // 角色：owner（创建者）、admin（管理员）、member（成员）
+  joinedAt: text("joined_at").notNull().default(sql`CURRENT_TIMESTAMP`), // 加入时间
+  lastReadAt: text("last_read_at"), // 最后已读时间（用于未读消息统计）
+});
+
+export const insertChatParticipantSchema = createInsertSchema(chatParticipants).omit({
+  id: true,
+  joinedAt: true,
+});
+
+export type InsertChatParticipant = z.infer<typeof insertChatParticipantSchema>;
+export type ChatParticipant = typeof chatParticipants.$inferSelect;
