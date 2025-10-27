@@ -1,68 +1,190 @@
-// Reference: blueprint:javascript_object_storage - ObjectUploader component
-import { useState } from "react";
-import type { ReactNode } from "react";
-import Uppy from "@uppy/core";
-import { DashboardModal } from "@uppy/react";
-import "@uppy/core/dist/style.min.css";
-import "@uppy/dashboard/dist/style.min.css";
-import AwsS3 from "@uppy/aws-s3";
-import type { UploadResult } from "@uppy/core";
+// Simplified file uploader without Uppy UI (avoiding CSS import issues)
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { Upload, X, Loader2, CheckCircle2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface ObjectUploaderProps {
-  maxNumberOfFiles?: number;
+  onUploadSuccess: (fileUrl: string, file: File) => void;
+  acceptedFileTypes?: string[];
   maxFileSize?: number;
-  onGetUploadParameters: () => Promise<{
-    method: "PUT";
-    url: string;
-  }>;
-  onComplete?: (
-    result: UploadResult<Record<string, unknown>, Record<string, unknown>>
-  ) => void;
-  buttonClassName?: string;
-  children: ReactNode;
+  buttonText?: string;
 }
 
-export function ObjectUploader({
-  maxNumberOfFiles = 1,
-  maxFileSize = 52428800, // 50MB default for learning materials
-  onGetUploadParameters,
-  onComplete,
-  buttonClassName,
-  children,
+export default function ObjectUploader({
+  onUploadSuccess,
+  acceptedFileTypes = ['*'],
+  maxFileSize = 52428800, // 50MB
+  buttonText = "选择文件"
 }: ObjectUploaderProps) {
-  const [showModal, setShowModal] = useState(false);
-  const [uppy] = useState(() =>
-    new Uppy({
-      restrictions: {
-        maxNumberOfFiles,
-        maxFileSize,
-        allowedFileTypes: ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.txt', '.jpg', '.jpeg', '.png', '.gif', '.mp4', '.mp3'],
-      },
-      autoProceed: false,
-    })
-      .use(AwsS3, {
-        shouldUseMultipart: false,
-        getUploadParameters: onGetUploadParameters,
-      })
-      .on("complete", (result) => {
-        onComplete?.(result);
-        setShowModal(false);
-      })
-  );
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file size
+    if (file.size > maxFileSize) {
+      toast({
+        title: "文件过大",
+        description: `文件大小不能超过 ${(maxFileSize / 1024 / 1024).toFixed(0)}MB`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSelectedFile(file);
+  };
+
+  const handleUpload = async () => {
+    if (!selectedFile) return;
+
+    setUploading(true);
+    setUploadProgress(0);
+
+    try {
+      // 1. Get upload URL from backend
+      const uploadUrlResponse = await fetch('/api/objects/upload', {
+        method: 'POST',
+        credentials: 'include'
+      });
+
+      if (!uploadUrlResponse.ok) {
+        throw new Error('获取上传URL失败');
+      }
+
+      const { uploadURL } = await uploadUrlResponse.json();
+
+      // 2. Upload file directly to object storage
+      const uploadResponse = await fetch(uploadURL, {
+        method: 'PUT',
+        body: selectedFile,
+        headers: {
+          'Content-Type': selectedFile.type || 'application/octet-stream',
+        },
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error('文件上传失败');
+      }
+
+      // 3. Extract file URL (remove query parameters)
+      const fileUrl = uploadURL.split('?')[0];
+      setUploadProgress(100);
+
+      // 4. Notify parent component
+      onUploadSuccess(fileUrl, selectedFile);
+
+      // Reset state
+      setSelectedFile(null);
+      setUploadProgress(0);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+
+      toast({
+        title: "上传成功",
+        description: `文件 "${selectedFile.name}" 已上传`,
+      });
+    } catch (error: any) {
+      console.error('上传失败:', error);
+      toast({
+        title: "上传失败",
+        description: error.message || "请重试",
+        variant: "destructive",
+      });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setSelectedFile(null);
+    setUploadProgress(0);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
 
   return (
-    <div>
-      <Button onClick={() => setShowModal(true)} className={buttonClassName} data-testid="button-upload">
-        {children}
-      </Button>
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={acceptedFileTypes.join(',')}
+          onChange={handleFileSelect}
+          className="hidden"
+          id="file-upload-input"
+          data-testid="input-file-upload"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          data-testid="button-select-file"
+        >
+          <Upload className="h-4 w-4 mr-2" />
+          {buttonText}
+        </Button>
+      </div>
 
-      <DashboardModal
-        uppy={uppy}
-        open={showModal}
-        onRequestClose={() => setShowModal(false)}
-        proudlyDisplayPoweredByUppy={false}
-      />
+      {selectedFile && (
+        <div className="border rounded-lg p-3 bg-muted/50">
+          <div className="flex items-start justify-between mb-2">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{selectedFile.name}</p>
+              <p className="text-xs text-muted-foreground">
+                {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+              </p>
+            </div>
+            {!uploading && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 shrink-0"
+                onClick={handleCancel}
+                data-testid="button-cancel-upload"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+
+          {uploading && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>上传中... {uploadProgress}%</span>
+              </div>
+              <div className="w-full bg-secondary rounded-full h-2">
+                <div
+                  className="bg-primary h-2 rounded-full transition-all"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {!uploading && uploadProgress === 0 && (
+            <Button
+              type="button"
+              onClick={handleUpload}
+              className="w-full"
+              data-testid="button-start-upload"
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              开始上传
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

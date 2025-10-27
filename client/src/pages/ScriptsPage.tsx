@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
 import { 
   Search, Plus, Sparkles, Copy, Heart, Upload, FileText, Eye, 
-  Download, Edit, Trash2, Folder, FolderOpen, ChevronRight, ChevronDown, X
+  Download, Edit, Trash2, Folder, FolderOpen, ChevronRight, ChevronDown, X, Loader2
 } from 'lucide-react';
 import {
   Dialog,
@@ -27,6 +27,9 @@ import {
 } from "@/components/ui/select";
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { queryClient, apiRequest } from '@/lib/queryClient';
+import ObjectUploader from '@/components/ObjectUploader';
 
 interface Script {
   id: string;
@@ -51,7 +54,8 @@ interface LearningMaterial {
   uploadDate: string;
   fileType: string;
   fileSize: number;
-  file: File;
+  fileUrl: string;
+  uploadedBy: string;
 }
 
 const mockScripts: Script[] = [
@@ -88,7 +92,6 @@ export default function ScriptsPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   
   // 学习资料状态
-  const [learningMaterials, setLearningMaterials] = useState<LearningMaterial[]>([]);
   const [categories, setCategories] = useState<Category[]>([
     { id: 'cat-1', name: '产品知识', parentId: null, isExpanded: true },
     { id: 'cat-2', name: '销售技巧', parentId: null, isExpanded: true },
@@ -99,40 +102,74 @@ export default function ScriptsPage() {
   const [selectedMaterial, setSelectedMaterial] = useState<LearningMaterial | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
-  const [isEditOpen, setIsEditOpen] = useState(false);
   const [isAddCategoryOpen, setIsAddCategoryOpen] = useState(false);
   
   // 上传表单
-  const [uploadFiles, setUploadFiles] = useState<FileList | null>(null);
   const [uploadCategoryId, setUploadCategoryId] = useState('');
-  
-  // 编辑表单
-  const [editTitle, setEditTitle] = useState('');
-  const [editCategoryId, setEditCategoryId] = useState('');
+  const [uploadTitle, setUploadTitle] = useState('');
   
   // 分类管理
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryParentId, setNewCategoryParentId] = useState<string | null>(null);
   const [materialSearchTerm, setMaterialSearchTerm] = useState('');
-  const [textFileContent, setTextFileContent] = useState<string>('');
-  const [isLoadingText, setIsLoadingText] = useState(false);
 
-  // 当选择文本文件时读取内容
-  useEffect(() => {
-    if (selectedMaterial && selectedMaterial.fileType.startsWith('text/')) {
-      setIsLoadingText(true);
-      selectedMaterial.file.text()
-        .then(content => {
-          setTextFileContent(content);
-          setIsLoadingText(false);
-        })
-        .catch(error => {
-          console.error('读取文件失败:', error);
-          setTextFileContent('读取文件内容失败');
-          setIsLoadingText(false);
-        });
+  // 获取学习资料列表
+  const { data: materialsData, isLoading: isLoadingMaterials } = useQuery({
+    queryKey: ['/api/learning-materials'],
+  });
+
+  const learningMaterials = (materialsData?.data || []) as LearningMaterial[];
+
+  // 创建学习资料记录
+  const createMaterialMutation = useMutation({
+    mutationFn: async (data: { title: string; categoryId: string; fileUrl: string; fileType: string; fileSize: number }) => {
+      return await apiRequest('/api/learning-materials', {
+        method: 'POST',
+        body: JSON.stringify(data),
+        headers: { 'Content-Type': 'application/json' }
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/learning-materials'] });
+      toast({
+        title: "上传成功",
+        description: "学习资料已保存",
+      });
+      setIsUploadOpen(false);
+      setUploadCategoryId('');
+      setUploadTitle('');
+    },
+    onError: (error: any) => {
+      toast({
+        title: "上传失败",
+        description: error.message || "请重试",
+        variant: "destructive",
+      });
     }
-  }, [selectedMaterial]);
+  });
+
+  // 删除学习资料
+  const deleteMaterialMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return await apiRequest(`/api/learning-materials/${id}`, {
+        method: 'DELETE'
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/learning-materials'] });
+      toast({
+        title: "已删除",
+        description: "学习资料已删除",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "删除失败",
+        description: error.message || "请重试",
+        variant: "destructive",
+      });
+    }
+  });
 
   const filteredScripts = mockScripts.filter(script =>
     script.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -214,16 +251,8 @@ export default function ScriptsPage() {
     }, 2000);
   };
 
-  // 上传文件
-  const handleUploadSubmit = () => {
-    if (!uploadFiles || uploadFiles.length === 0) {
-      toast({
-        title: "请选择文件",
-        variant: "destructive",
-      });
-      return;
-    }
-
+  // 文件上传成功回调
+  const handleUploadSuccess = (fileUrl: string, file: File) => {
     if (!uploadCategoryId) {
       toast({
         title: "请选择分类",
@@ -232,26 +261,15 @@ export default function ScriptsPage() {
       return;
     }
 
-    const newMaterials = Array.from(uploadFiles).map((file, index) => ({
-      id: `${Date.now()}-${index}`,
-      title: file.name,
-      categoryId: uploadCategoryId,
-      uploadDate: new Date().toLocaleDateString('zh-CN'),
-      fileType: file.type || 'application/octet-stream',
-      fileSize: file.size,
-      file: file
-    }));
-    
-    setLearningMaterials(prev => [...prev, ...newMaterials]);
-    
-    toast({
-      title: "上传成功",
-      description: `成功上传 ${uploadFiles.length} 个文件`,
-    });
+    const title = uploadTitle.trim() || file.name;
 
-    setUploadFiles(null);
-    setUploadCategoryId('');
-    setIsUploadOpen(false);
+    createMaterialMutation.mutate({
+      title,
+      categoryId: uploadCategoryId,
+      fileUrl,
+      fileType: file.type || 'application/octet-stream',
+      fileSize: file.size
+    });
   };
 
   // 预览文件
@@ -262,14 +280,13 @@ export default function ScriptsPage() {
 
   // 下载文件
   const handleDownload = (material: LearningMaterial) => {
-    const url = URL.createObjectURL(material.file);
     const a = document.createElement('a');
-    a.href = url;
+    a.href = material.fileUrl;
     a.download = material.title;
+    a.target = '_blank';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    URL.revokeObjectURL(url);
 
     toast({
       title: "下载成功",
@@ -277,57 +294,9 @@ export default function ScriptsPage() {
     });
   };
 
-  // 编辑资料
-  const handleEditMaterial = (material: LearningMaterial) => {
-    setSelectedMaterial(material);
-    setEditTitle(material.title);
-    setEditCategoryId(material.categoryId);
-    setIsEditOpen(true);
-  };
-
-  const handleEditSubmit = () => {
-    if (!selectedMaterial) return;
-
-    if (!editTitle.trim()) {
-      toast({
-        title: "标题不能为空",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!editCategoryId) {
-      toast({
-        title: "请选择分类",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setLearningMaterials(prev =>
-      prev.map(m =>
-        m.id === selectedMaterial.id
-          ? { ...m, title: editTitle, categoryId: editCategoryId }
-          : m
-      )
-    );
-
-    toast({
-      title: "保存成功",
-      description: "资料信息已更新",
-    });
-
-    setIsEditOpen(false);
-    setSelectedMaterial(null);
-  };
-
   // 删除资料
   const handleDeleteMaterial = (materialId: string) => {
-    setLearningMaterials(prev => prev.filter(m => m.id !== materialId));
-    toast({
-      title: "已删除",
-      description: "学习资料已删除",
-    });
+    deleteMaterialMutation.mutate(materialId);
   };
 
   // 添加分类
@@ -632,7 +601,12 @@ export default function ScriptsPage() {
                 </div>
               )}
 
-              {displayedMaterials.length === 0 ? (
+              {isLoadingMaterials ? (
+                <Card className="p-12 text-center">
+                  <Loader2 className="h-12 w-12 mx-auto mb-4 text-muted-foreground animate-spin" />
+                  <p className="text-muted-foreground">加载中...</p>
+                </Card>
+              ) : displayedMaterials.length === 0 ? (
                 <Card className="p-12 text-center">
                   <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
                   <p className="text-muted-foreground mb-2">
@@ -654,7 +628,7 @@ export default function ScriptsPage() {
                       </div>
                       <h3 className="font-semibold mb-1 line-clamp-2">{material.title}</h3>
                       <div className="text-xs text-muted-foreground mb-3 space-y-1">
-                        <p>上传时间：{material.uploadDate}</p>
+                        <p>上传时间：{new Date(material.uploadDate).toLocaleDateString('zh-CN')}</p>
                         <p>文件大小：{formatFileSize(material.fileSize)}</p>
                       </div>
                       <div className="flex items-center gap-1">
@@ -677,14 +651,6 @@ export default function ScriptsPage() {
                         >
                           <Download className="h-4 w-4 mr-1" />
                           下载
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEditMaterial(material)}
-                          data-testid={`button-edit-${material.id}`}
-                        >
-                          <Edit className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="ghost"
@@ -713,19 +679,14 @@ export default function ScriptsPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="upload-files">选择文件</Label>
+              <Label htmlFor="upload-title">标题（可选，默认为文件名）</Label>
               <Input
-                id="upload-files"
-                type="file"
-                multiple
-                onChange={(e) => setUploadFiles(e.target.files)}
-                data-testid="input-upload-files"
+                id="upload-title"
+                placeholder="输入自定义标题"
+                value={uploadTitle}
+                onChange={(e) => setUploadTitle(e.target.value)}
+                data-testid="input-upload-title"
               />
-              {uploadFiles && uploadFiles.length > 0 && (
-                <p className="text-sm text-muted-foreground mt-2">
-                  已选择 {uploadFiles.length} 个文件
-                </p>
-              )}
             </div>
             <div>
               <Label htmlFor="upload-category">选择分类</Label>
@@ -742,57 +703,24 @@ export default function ScriptsPage() {
                 </SelectContent>
               </Select>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsUploadOpen(false)}>
-              取消
-            </Button>
-            <Button onClick={handleUploadSubmit} data-testid="button-submit-upload">
-              上传
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* 编辑对话框 */}
-      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>编辑学习资料</DialogTitle>
-            <DialogDescription>修改文件名称和分类</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
             <div>
-              <Label htmlFor="edit-title">标题</Label>
-              <Input
-                id="edit-title"
-                value={editTitle}
-                onChange={(e) => setEditTitle(e.target.value)}
-                data-testid="input-edit-title"
+              <Label>选择文件</Label>
+              <ObjectUploader 
+                onUploadSuccess={handleUploadSuccess}
+                acceptedFileTypes={[
+                  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+                  '.txt', '.md', '.jpg', '.jpeg', '.png', '.gif'
+                ]}
               />
             </div>
-            <div>
-              <Label htmlFor="edit-category">分类</Label>
-              <Select value={editCategoryId} onValueChange={setEditCategoryId}>
-                <SelectTrigger id="edit-category" data-testid="select-edit-category">
-                  <SelectValue placeholder="选择分类" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map((cat) => (
-                    <SelectItem key={cat.id} value={cat.id}>
-                      {getCategoryPath(cat.id)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditOpen(false)}>
+            <Button variant="outline" onClick={() => {
+              setIsUploadOpen(false);
+              setUploadCategoryId('');
+              setUploadTitle('');
+            }}>
               取消
-            </Button>
-            <Button onClick={handleEditSubmit} data-testid="button-submit-edit">
-              保存
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -874,33 +802,33 @@ export default function ScriptsPage() {
               </div>
               <div>
                 <Label>上传时间</Label>
-                <p className="text-muted-foreground">{selectedMaterial?.uploadDate}</p>
+                <p className="text-muted-foreground">
+                  {selectedMaterial && new Date(selectedMaterial.uploadDate).toLocaleDateString('zh-CN')}
+                </p>
               </div>
             </div>
             <div className="border rounded-lg bg-muted/50 min-h-[400px] flex flex-col items-center justify-center overflow-hidden">
               {selectedMaterial?.fileType.startsWith('image/') && (
                 <img 
-                  src={URL.createObjectURL(selectedMaterial.file)} 
+                  src={selectedMaterial.fileUrl} 
                   alt={selectedMaterial.title}
                   className="max-w-full max-h-[500px] object-contain"
                 />
               )}
               {selectedMaterial?.fileType === 'application/pdf' && (
                 <iframe
-                  src={URL.createObjectURL(selectedMaterial.file)}
+                  src={selectedMaterial.fileUrl}
                   className="w-full h-[500px]"
                   title="PDF预览"
                 />
               )}
               {selectedMaterial?.fileType.startsWith('text/') && (
                 <div className="w-full h-[400px] overflow-auto p-4 bg-white">
-                  {isLoadingText ? (
-                    <p className="text-sm text-muted-foreground">加载中...</p>
-                  ) : (
-                    <pre className="text-sm whitespace-pre-wrap font-mono">
-                      {textFileContent}
-                    </pre>
-                  )}
+                  <iframe
+                    src={selectedMaterial.fileUrl}
+                    className="w-full h-full border-0"
+                    title="文本预览"
+                  />
                 </div>
               )}
               {!selectedMaterial?.fileType.startsWith('image/') && 
