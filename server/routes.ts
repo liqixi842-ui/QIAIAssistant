@@ -1705,7 +1705,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!title || !categoryId || !fileUrl || !fileType || !fileSize) {
         return res.status(400).json({ error: "缺少必填字段" });
       }
-      
+
       const material = await storage.createLearningMaterial({
         title,
         categoryId,
@@ -1722,6 +1722,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  /**
+   * GET /api/learning-materials/:id/preview-url
+   * 获取学习资料的临时预览URL（7天有效期，供Office Online使用）
+   */
+  app.get("/api/learning-materials/:id/preview-url", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const { id } = req.params;
+      const materials = await storage.getAllLearningMaterials();
+      const material = materials.find(m => m.id === id);
+      
+      if (!material) {
+        return res.status(404).json({ error: "学习资料不存在" });
+      }
+
+      // 从fileUrl提取bucket和object信息
+      const { signObjectURL } = await import("./objectStorage");
+      const url = new URL(material.fileUrl);
+      const pathParts = url.pathname.split('/');
+      const bucketName = pathParts[1];
+      const objectName = pathParts.slice(2).join('/');
+
+      // 生成7天有效期的签名URL
+      const signedURL = await signObjectURL({
+        bucketName,
+        objectName,
+        method: 'GET',
+        ttlSec: 7 * 24 * 60 * 60 // 7天
+      });
+
+      res.json({ success: true, previewUrl: signedURL });
+    } catch (error: any) {
+      console.error('获取预览URL失败:', error);
+      res.status(500).json({ error: "获取预览URL失败", details: error.message });
+    }
+  });
+
   /**
    * DELETE /api/learning-materials/:id
    * 删除学习资料
@@ -1747,7 +1787,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   /**
    * POST /api/objects/upload
-   * 获取文件上传的预签名URL
+   * 获取文件上传的预签名URL（学习资料使用公开上传）
    */
   app.post("/api/objects/upload", async (req, res) => {
     if (!req.session.userId) {
@@ -1757,7 +1797,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { ObjectStorageService } = await import("./objectStorage");
       const objectStorageService = new ObjectStorageService();
-      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      // 学习资料使用公开上传，以便Office Online预览
+      const uploadURL = await objectStorageService.getPublicUploadURL();
       res.json({ uploadURL });
     } catch (error: any) {
       console.error('获取上传URL失败:', error);

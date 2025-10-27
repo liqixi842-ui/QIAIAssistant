@@ -85,6 +85,64 @@ const mockScripts: Script[] = [
   }
 ];
 
+// Office文档预览组件 - 使用签名URL
+function OfficePreview({ materialId }: { materialId: string }) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchPreviewUrl() {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const response = await fetch(`/api/learning-materials/${materialId}/preview-url`, {
+          credentials: 'include'
+        });
+        
+        if (!response.ok) {
+          throw new Error('获取预览URL失败');
+        }
+        
+        const data = await response.json();
+        setPreviewUrl(data.previewUrl);
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    fetchPreviewUrl();
+  }, [materialId]);
+
+  if (isLoading) {
+    return (
+      <div className="w-full h-[600px] flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="ml-2 text-muted-foreground">正在加载预览...</p>
+      </div>
+    );
+  }
+
+  if (error || !previewUrl) {
+    return (
+      <div className="w-full h-[600px] flex flex-col items-center justify-center">
+        <FileText className="h-16 w-16 text-muted-foreground mb-4" />
+        <p className="text-muted-foreground">无法加载预览：{error || '未知错误'}</p>
+      </div>
+    );
+  }
+
+  return (
+    <iframe
+      src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(previewUrl)}`}
+      className="w-full h-[600px] border-0"
+      title="Office文档预览"
+    />
+  );
+}
+
 export default function ScriptsPage() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
@@ -272,7 +330,7 @@ export default function ScriptsPage() {
   };
 
   // 预览文件
-  const handlePreview = (material: LearningMaterial) => {
+  const handlePreview = async (material: LearningMaterial) => {
     setSelectedMaterial(material);
     setIsPreviewOpen(true);
   };
@@ -836,11 +894,7 @@ export default function ScriptsPage() {
                selectedMaterial?.fileType.includes('spreadsheet') ||
                selectedMaterial?.fileType.includes('powerpoint') ||
                selectedMaterial?.fileType.includes('presentation') ? (
-                <iframe
-                  src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(selectedMaterial.fileUrl)}`}
-                  className="w-full h-[600px] border-0"
-                  title="Office文档预览"
-                />
+                <OfficePreview materialId={selectedMaterial.id} />
               ) : !selectedMaterial?.fileType.startsWith('image/') && 
                  selectedMaterial?.fileType !== 'application/pdf' && 
                  !selectedMaterial?.fileType.startsWith('text/') && (
