@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -6,6 +6,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import Logo from '@/components/Logo';
 import { useLocation } from 'wouter';
 import { useToast } from '@/hooks/use-toast';
+import { useQuery } from '@tanstack/react-query';
+
+interface Supervisor {
+  id: string;
+  nickname: string;
+  role: string;
+}
 
 export default function RegisterPage() {
   const [, setLocation] = useLocation();
@@ -17,6 +24,38 @@ export default function RegisterPage() {
     role: '',
     supervisorId: ''
   });
+
+  // 获取可选上级列表（公开API，无需登录）
+  const { data: supervisorsData } = useQuery<{ success: boolean; data: Supervisor[] }>({
+    queryKey: ['/api/auth/supervisors'],
+  });
+
+  const allSupervisors = supervisorsData?.data || [];
+  
+  // 根据选择的角色筛选可选的上级
+  const getAvailableSupervisors = () => {
+    if (!formData.role) return [];
+    
+    if (formData.role === '业务') {
+      // 业务员的上级必须是经理
+      return allSupervisors.filter(u => u.role === '经理');
+    } else if (formData.role === '经理') {
+      // 经理的上级必须是总监
+      return allSupervisors.filter(u => u.role === '总监');
+    } else if (formData.role === '总监' || formData.role === '后勤') {
+      // 总监和后勤的上级必须是主管
+      return allSupervisors.filter(u => u.role === '主管');
+    }
+    
+    return [];
+  };
+
+  const availableSupervisors = getAvailableSupervisors();
+  
+  // 当角色改变时，清空已选的上级
+  useEffect(() => {
+    setFormData(prev => ({ ...prev, supervisorId: '' }));
+  }, [formData.role]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,27 +179,38 @@ export default function RegisterPage() {
             </SelectContent>
           </Select>
           <div className="space-y-1">
-            <Input
-              type="text"
-              placeholder={
-                formData.role === '业务' ? '上级ID（填写您的经理ID）*' :
-                formData.role === '经理' ? '上级ID（填写您的总监ID）*' :
-                formData.role === '总监' || formData.role === '后勤' ? '上级ID（填写主管ID：7）*' :
-                '上级ID *'
-              }
+            <Select
               value={formData.supervisorId}
-              onChange={(e) => setFormData({ ...formData, supervisorId: e.target.value })}
-              data-testid="input-supervisor-id"
+              onValueChange={(value) => setFormData({ ...formData, supervisorId: value })}
+              disabled={!formData.role || availableSupervisors.length === 0}
               required
-            />
+            >
+              <SelectTrigger data-testid="select-supervisor">
+                <SelectValue placeholder={
+                  !formData.role ? '请先选择职位' :
+                  availableSupervisors.length === 0 ? '暂无可选上级' :
+                  formData.role === '业务' ? '选择您的经理 *' :
+                  formData.role === '经理' ? '选择您的总监 *' :
+                  formData.role === '总监' || formData.role === '后勤' ? '选择主管 *' :
+                  '选择上级 *'
+                } />
+              </SelectTrigger>
+              <SelectContent>
+                {availableSupervisors.map((supervisor: Supervisor) => (
+                  <SelectItem key={supervisor.id} value={supervisor.id}>
+                    {supervisor.nickname} ({supervisor.role})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {formData.role === '业务' && (
-              <p className="text-xs text-muted-foreground">业务人员必须填写经理的ID</p>
+              <p className="text-xs text-muted-foreground">从列表中选择您的经理</p>
             )}
             {formData.role === '经理' && (
-              <p className="text-xs text-muted-foreground">经理必须填写总监的ID</p>
+              <p className="text-xs text-muted-foreground">从列表中选择您的总监</p>
             )}
             {(formData.role === '总监' || formData.role === '后勤') && (
-              <p className="text-xs text-muted-foreground">总监和后勤人员填写主管ID：7</p>
+              <p className="text-xs text-muted-foreground">从列表中选择主管</p>
             )}
           </div>
           <div className="flex gap-3">

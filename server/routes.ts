@@ -409,6 +409,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   /**
+   * 获取可选上级列表（公开API，用于注册页面）
+   * GET /api/auth/supervisors
+   */
+  app.get("/api/auth/supervisors", async (req, res) => {
+    try {
+      const users = await storage.getAllUsers();
+      
+      // 只返回可以作为上级的角色：经理、总监、主管
+      const supervisors = users
+        .filter(user => ['经理', '总监', '主管'].includes(user.role))
+        .map(user => ({
+          id: user.id,
+          nickname: user.nickname || user.name,
+          role: user.role
+        }));
+
+      res.json({ success: true, data: supervisors });
+    } catch (error) {
+      console.error('获取上级列表失败:', error);
+      res.status(500).json({ error: "获取上级列表失败" });
+    }
+  });
+
+  /**
    * 获取所有业务人员列表（用于筛选）
    * GET /api/users
    */

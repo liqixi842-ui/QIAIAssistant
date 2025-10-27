@@ -80,11 +80,19 @@ interface TeamManagementProps {
   userName?: string;
 }
 
-export default function TeamManagement({ userRole = '业务', userName = '张三' }: TeamManagementProps) {
+export default function TeamManagement({ userRole: propUserRole, userName: propUserName }: TeamManagementProps) {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<EquipmentInfo>>({});
+
+  // 从localStorage获取当前登录用户信息
+  const currentUserStr = localStorage.getItem('currentUser');
+  const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
+  
+  // 使用真实登录用户的信息，优先于props
+  const userRole = currentUser?.role || propUserRole || '业务';
+  const userName = currentUser?.nickname || currentUser?.name || propUserName || '张三';
 
   // 从API获取真实用户数据
   const { data: usersData, isLoading } = useQuery<{ success: boolean; data: ApiUser[] }>({
