@@ -144,6 +144,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/debug/add-all-users-to-chat", async (req, res) => {
+    const token = req.query.token;
+    if (token !== "debug2025") {
+      return res.status(403).send("Forbidden");
+    }
+    
+    try {
+      const allUsers = await storage.getAllUsers();
+      const chatId = '1'; // 默认聊天室
+      const results = [];
+
+      for (const user of allUsers) {
+        try {
+          // 检查是否已在聊天室
+          const isInChat = await storage.isUserInChat(chatId, user.id);
+          if (!isInChat) {
+            await storage.addChatParticipant({
+              chatId,
+              userId: user.id,
+            });
+            results.push(`✅ ${user.nickname || user.name} 已加入聊天室`);
+          } else {
+            results.push(`ℹ️  ${user.nickname || user.name} 已在聊天室中`);
+          }
+        } catch (error: any) {
+          results.push(`❌ ${user.nickname || user.name} 加入失败: ${error.message}`);
+        }
+      }
+      
+      res.json({
+        success: true,
+        message: "批量添加完成",
+        results
+      });
+    } catch (error: any) {
+      res.status(500).json({ 
+        success: false,
+        error: error.message 
+      });
+    }
+  });
+
   app.get("/deploy/server-index", async (req, res) => {
     const token = req.query.token;
     if (token !== "deploy2025") {
@@ -272,6 +314,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: trimmedRole,
         supervisorId: trimmedSupervisorId,
       });
+
+      // 自动把新用户加入默认聊天室（销售团队，ID='1'）
+      try {
+        await storage.addChatParticipant({
+          chatId: '1',
+          userId: user.id,
+        });
+        console.log(`新用户 ${user.nickname} 已自动加入聊天室`);
+      } catch (error) {
+        console.error('添加用户到聊天室失败:', error);
+        // 不阻断注册流程，只记录错误
+      }
 
       // 记录审计日志
       await logAudit({
