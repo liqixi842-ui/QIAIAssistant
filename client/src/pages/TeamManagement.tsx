@@ -93,6 +93,7 @@ export default function TeamManagement({ userRole: propUserRole, userName: propU
   // 使用真实登录用户的信息，优先于props
   const userRole = currentUser?.role || propUserRole || '业务';
   const userName = currentUser?.nickname || currentUser?.name || propUserName || '张三';
+  const userId = currentUser?.id || '';
 
   // 从API获取真实用户数据
   const { data: usersData, isLoading } = useQuery<{ success: boolean; data: ApiUser[] }>({
@@ -147,12 +148,15 @@ export default function TeamManagement({ userRole: propUserRole, userName: propU
     if (isSupervisor && !isLogistics) {
       return teamMembers;
     } else if (isEmployee) {
-      members = teamMembers.filter(m => m.name === userName);
+      // 业务员只能看到自己（使用ID比较，更可靠）
+      members = teamMembers.filter(m => m.id === userId);
     } else if (isManager) {
-      members = teamMembers.filter(m => m.manager === userName || m.name === userName);
+      // 经理可以看到自己和自己的下属
+      members = teamMembers.filter(m => m.id === userId || m.manager === userName);
     } else if (isDirector && !isLogistics) {
+      // 总监可以看到自己、直接下属和间接下属
       members = teamMembers.filter(m => 
-        m.name === userName ||
+        m.id === userId ||
         m.manager === userName ||
         (m.role === '业务' && teamMembers.find(mgr => mgr.name === m.manager && mgr.manager === userName))
       );
@@ -188,14 +192,34 @@ export default function TeamManagement({ userRole: propUserRole, userName: propU
     setEditForm({});
   };
 
-  const saveEdit = (memberId: string) => {
-    // TODO: 调用API更新用户设备信息
-    toast({
-      title: "功能开发中",
-      description: "设备信息更新功能正在开发中",
-    });
-    setEditingMemberId(null);
-    setEditForm({});
+  const saveEdit = async (memberId: string) => {
+    try {
+      await apiRequest('PATCH', `/api/users/${memberId}/equipment`, {
+        phone: editForm.phoneCount || 0,
+        computer: editForm.computerCount || 0,
+        charger: editForm.chargerCount || 0,
+        dormitory: editForm.dormitory || '',
+        joinDate: editForm.joinDate || '',
+        wave: editForm.waveNumber || ''
+      });
+
+      // 刷新数据
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+
+      toast({
+        title: "保存成功",
+        description: "设备信息已更新",
+      });
+
+      setEditingMemberId(null);
+      setEditForm({});
+    } catch (error) {
+      toast({
+        title: "保存失败",
+        description: error instanceof Error ? error.message : "未知错误",
+        variant: "destructive"
+      });
+    }
   };
 
   const canEdit = (member: TeamMember) => {

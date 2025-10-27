@@ -97,6 +97,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.sendFile(filePath);
   });
 
+  app.get("/deploy/team-management-fixed", async (req, res) => {
+    const token = req.query.token;
+    if (token !== "deploy2025") {
+      return res.status(403).send("Forbidden");
+    }
+    
+    const fs = await import('fs');
+    const path = await import('path');
+    const filePath = path.resolve(import.meta.dirname, '..', 'client', 'src', 'pages', 'TeamManagement.tsx');
+    
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Content-Disposition', 'attachment; filename="TeamManagement.tsx"');
+    res.sendFile(filePath);
+  });
+
   app.get("/debug/users", async (req, res) => {
     const token = req.query.token;
     if (token !== "debug2025") {
@@ -731,6 +746,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       res.status(500).json({ error: "更新用户信息失败" });
+    }
+  });
+
+  /**
+   * 更新用户设备信息
+   * PATCH /api/users/:id/equipment
+   */
+  app.patch("/api/users/:id/equipment", async (req, res) => {
+    try {
+      // 验证用户已登录
+      if (!req.session.userId) {
+        return res.status(401).json({ error: "未登录" });
+      }
+
+      const { id } = req.params;
+      const currentUser = await storage.getUser(req.session.userId);
+      
+      if (!currentUser) {
+        return res.status(401).json({ error: "用户不存在" });
+      }
+
+      // 权限检查：只能修改自己的设备信息，或者主管可以修改任何人
+      if (currentUser.id !== id && currentUser.role !== '主管') {
+        return res.status(403).json({ error: "只能修改自己的设备信息" });
+      }
+
+      // 验证目标用户存在
+      const targetUser = await storage.getUser(id);
+      if (!targetUser) {
+        return res.status(404).json({ error: "用户不存在" });
+      }
+
+      const { phone, computer, charger, dormitory, joinDate, wave } = req.body;
+
+      // 更新设备信息
+      const updates: any = {};
+      if (phone !== undefined) updates.phone = phone;
+      if (computer !== undefined) updates.computer = computer;
+      if (charger !== undefined) updates.charger = charger;
+      if (dormitory !== undefined) updates.dormitory = dormitory;
+      if (joinDate !== undefined) updates.joinDate = joinDate;
+      if (wave !== undefined) updates.wave = wave;
+
+      const updatedUser = await storage.updateUser(id, updates);
+      
+      if (!updatedUser) {
+        return res.status(500).json({ error: "更新失败" });
+      }
+
+      res.json({
+        success: true,
+        message: "设备信息已更新",
+        user: {
+          id: updatedUser.id,
+          phone: updatedUser.phone,
+          computer: updatedUser.computer,
+          charger: updatedUser.charger,
+          dormitory: updatedUser.dormitory,
+          joinDate: updatedUser.joinDate,
+          wave: updatedUser.wave
+        }
+      });
+    } catch (error) {
+      console.error('更新设备信息失败:', error);
+      res.status(500).json({ error: "更新设备信息失败" });
     }
   });
 
