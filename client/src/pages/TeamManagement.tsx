@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,8 +26,10 @@ import {
   Check, 
   X, 
   Trash2, 
-  Key 
+  Key,
+  Users
 } from 'lucide-react';
+import { apiRequest, queryClient } from '@/lib/queryClient';
 import {
   Dialog,
   DialogContent,
@@ -120,8 +122,10 @@ export default function TeamManagement({ userRole = '业务', userName = '张三
   
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showSupervisorDialog, setShowSupervisorDialog] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
+  const [newSupervisorId, setNewSupervisorId] = useState('');
 
   const isSupervisor = userRole === '主管';
   const isDirector = userRole === '总监';
@@ -190,6 +194,45 @@ export default function TeamManagement({ userRole = '业务', userName = '张三
     if (isLogistics) return false;
     if (member.name === userName) return true;
     return false;
+  };
+
+  // 更新用户上级的mutation
+  const updateUserMutation = useMutation({
+    mutationFn: async ({ userId, supervisorId }: { userId: string; supervisorId: string }) => {
+      return await apiRequest('PATCH', `/api/users/${userId}`, { supervisorId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      toast({
+        title: "成功",
+        description: "上级ID已更新"
+      });
+      setShowSupervisorDialog(false);
+      setNewSupervisorId('');
+    },
+    onError: (error: any) => {
+      toast({
+        title: "失败",
+        description: error.message || "更新失败",
+        variant: "destructive"
+      });
+    }
+  });
+
+  const handleChangeSupervisor = () => {
+    if (!selectedMemberId || !newSupervisorId.trim()) {
+      toast({
+        title: "错误",
+        description: "请输入上级ID",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    updateUserMutation.mutate({
+      userId: selectedMemberId,
+      supervisorId: newSupervisorId.trim()
+    });
   };
 
   const equipmentStats = {
@@ -494,6 +537,21 @@ export default function TeamManagement({ userRole = '业务', userName = '张三
                             variant="ghost"
                             onClick={() => {
                               setSelectedMemberId(member.id);
+                              setNewSupervisorId(
+                                apiUsers.find(u => u.id === member.id)?.supervisorId || ''
+                              );
+                              setShowSupervisorDialog(true);
+                            }}
+                            data-testid={`button-supervisor-${member.id}`}
+                            title="修改上级"
+                          >
+                            <Users className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => {
+                              setSelectedMemberId(member.id);
                               setShowPasswordDialog(true);
                             }}
                             data-testid={`button-password-${member.id}`}
@@ -521,6 +579,54 @@ export default function TeamManagement({ userRole = '业务', userName = '张三
           </TableBody>
         </Table>
       </Card>
+
+      <Dialog open={showSupervisorDialog} onOpenChange={setShowSupervisorDialog}>
+        <DialogContent data-testid="dialog-supervisor">
+          <DialogHeader>
+            <DialogTitle>修改上级ID</DialogTitle>
+            <DialogDescription>
+              {selectedMemberId && (() => {
+                const member = apiUsers.find(u => u.id === selectedMemberId);
+                return member ? `修改 ${member.nickname || member.name}（${member.role}）的上级ID` : '修改用户的上级ID';
+              })()}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">当前上级ID</label>
+              <Input
+                value={apiUsers.find(u => u.id === selectedMemberId)?.supervisorId || '无'}
+                disabled
+                className="bg-muted"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">新上级ID *</label>
+              <Input
+                placeholder="请输入新的上级ID"
+                value={newSupervisorId}
+                onChange={(e) => setNewSupervisorId(e.target.value)}
+                data-testid="input-new-supervisor"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                提示：系统会自动验证上级角色是否符合层级要求
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSupervisorDialog(false)}>
+              取消
+            </Button>
+            <Button 
+              onClick={handleChangeSupervisor} 
+              data-testid="button-confirm-supervisor"
+              disabled={updateUserMutation.isPending}
+            >
+              {updateUserMutation.isPending ? '更新中...' : '确认修改'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
         <DialogContent data-testid="dialog-password">
