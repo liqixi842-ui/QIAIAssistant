@@ -26,9 +26,11 @@ Preferred communication style: Simple, everyday language.
     - **Task Management System**: Full CRUD for tasks with PostgresStorage, authentication/ownership validation, `drizzle-zod` schema validation, AI auto-generation of tasks from customer data, tasks schema with `guidanceSteps`, `script`, `priority` fields, English status values.
     - **Feedback System**: Universal access for submission/viewing, anonymous display for most roles, resolution tracking, management controls for supervisors/directors.
     - **Registration System Overhaul**: Requires only nickname, enforces alphanumeric username (`/^[a-zA-Z0-9]+$/`), strict role hierarchy enforcement for supervisor assignments, dynamic frontend hints, security against API bypass.
+    - **Registration UX Enhancement**: `/api/auth/supervisors` public endpoint provides dropdown of supervisors (managers/directors/supervisors) filtered by role hierarchy, displays nickname + role, submits UUID; auto-clears on role change.
     - **Session Security**: Non-persistent session cookies (`maxAge` removed), `httpOnly: true`, `sameSite: 'lax'`, `secure: true` in production, complete logout flow with `req.session.destroy()` and `res.clearCookie()`.
     - **Chat Room Isolation**: `chat_id` column added to `chat_messages` table for filtering, `getChatMessagesByChatId()` method, API accepts `chatId` parameter, WebSocket messages include `chatId`, frontend filters messages by `chatId`.
     - **Reports System**: 4-Dimensional Analysis (By Channel, By Date, By Team, By Agent) via `/api/reports/summary-tables` endpoint, returning 4 summary datasets with 15 key metrics, date range filtering, handling for orphaned customers/teams.
+    - **Team Management Enhancement**: Reads logged-in user from localStorage instead of default props, ensuring team members can view/edit their own equipment and see themselves in the team list.
 
 ## External Dependencies
 
