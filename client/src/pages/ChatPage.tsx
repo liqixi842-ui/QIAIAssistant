@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Search, Send, Plus, Users, Wifi, WifiOff, ArrowDown } from 'lucide-react';
+import { Search, Send, Plus, Users, Wifi, WifiOff, ArrowDown, Info } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
@@ -75,6 +75,7 @@ export default function ChatPage() {
   const [groupName, setGroupName] = useState('');
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [showUserList, setShowUserList] = useState(false);
+  const [showMemberList, setShowMemberList] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [showScrollButton, setShowScrollButton] = useState(false);
 
@@ -102,6 +103,17 @@ export default function ChatPage() {
       : undefined,
     enabled: !!selectedChatId,
   });
+
+  // 搜索消息
+  const { data: searchMessagesData } = useQuery<{ success: boolean; data: Message[] }>({
+    queryKey: ['/api/search/messages', searchTerm],
+    queryFn: searchTerm
+      ? () => fetch(`/api/search/messages?keyword=${encodeURIComponent(searchTerm)}`).then(r => r.json())
+      : undefined,
+    enabled: !!searchTerm && searchTerm.length > 0,
+  });
+
+  const searchMessages = searchMessagesData?.data || [];
 
   // 搜索用户
   const { data: searchUsersData } = useQuery<{ success: boolean; data: SearchUser[] }>({
@@ -258,10 +270,33 @@ export default function ChatPage() {
     );
   };
 
-  // 过滤聊天列表
-  const filteredChats = chats.filter(chat =>
-    chat.name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // 过滤聊天列表 - 支持搜索消息内容
+  const filteredChats = (() => {
+    if (!searchTerm) {
+      // 没有搜索词，显示所有聊天室
+      return chats;
+    }
+
+    // 有搜索词时：
+    // 1. 按聊天室名称匹配
+    const nameMatches = chats.filter(chat =>
+      chat.name?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    // 2. 按消息内容匹配（从搜索结果中获取聊天室ID）
+    const messageMatchChatIds = new Set(searchMessages.map(m => m.chatId));
+    const messageMatches = chats.filter(chat => messageMatchChatIds.has(chat.id));
+
+    // 合并结果并去重
+    const allMatches = [...nameMatches];
+    messageMatches.forEach(chat => {
+      if (!allMatches.find(c => c.id === chat.id)) {
+        allMatches.push(chat);
+      }
+    });
+
+    return allMatches;
+  })();
 
   // 格式化时间
   const formatTime = (timestamp: string) => {
@@ -405,7 +440,7 @@ export default function ChatPage() {
           <div className="relative">
             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="搜索对话..."
+              placeholder="搜索对话或消息..."
               className="pl-8"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -418,45 +453,56 @@ export default function ChatPage() {
           {chatsLoading ? (
             <div className="p-4 text-center text-muted-foreground">加载中...</div>
           ) : filteredChats.length === 0 ? (
-            <div className="p-4 text-center text-muted-foreground">暂无对话</div>
+            <div className="p-4 text-center text-muted-foreground">
+              {searchTerm ? '没有找到匹配的对话或消息' : '暂无对话'}
+            </div>
           ) : (
             <div className="p-2">
-              {filteredChats.map((chat) => (
-                <div
-                  key={chat.id}
-                  className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer hover-elevate active-elevate-2 ${
-                    selectedChatId === chat.id ? 'bg-accent' : ''
-                  }`}
-                  onClick={() => setSelectedChatId(chat.id)}
-                  data-testid={`chat-item-${chat.id}`}
-                >
-                  <Avatar>
-                    <AvatarFallback>
-                      {chat.type === 'group' ? <Users className="h-4 w-4" /> : chat.name?.charAt(0)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium truncate">{chat.name || '未命名对话'}</span>
-                      {chat.lastMessage && (
-                        <span className="text-xs text-muted-foreground">
-                          {formatTime(chat.lastMessage.timestamp)}
+              {filteredChats.map((chat) => {
+                // 查找该聊天室中匹配的消息
+                const matchedMessages = searchMessages.filter(m => m.chatId === chat.id);
+                const hasMatchedMessage = matchedMessages.length > 0;
+                
+                return (
+                  <div
+                    key={chat.id}
+                    className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer hover-elevate active-elevate-2 ${
+                      selectedChatId === chat.id ? 'bg-accent' : ''
+                    }`}
+                    onClick={() => setSelectedChatId(chat.id)}
+                    data-testid={`chat-item-${chat.id}`}
+                  >
+                    <Avatar>
+                      <AvatarFallback>
+                        {chat.type === 'group' ? <Users className="h-4 w-4" /> : chat.name?.charAt(0)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium truncate">{chat.name || '未命名对话'}</span>
+                        {chat.lastMessage && (
+                          <span className="text-xs text-muted-foreground">
+                            {formatTime(chat.lastMessage.timestamp)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground truncate">
+                          {hasMatchedMessage 
+                            ? `找到 ${matchedMessages.length} 条匹配消息`
+                            : (chat.lastMessage?.content || '暂无消息')
+                          }
                         </span>
-                      )}
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground truncate">
-                        {chat.lastMessage?.content || '暂无消息'}
-                      </span>
-                      {chat.unreadCount > 0 && (
-                        <Badge variant="default" className="ml-2">
-                          {chat.unreadCount}
-                        </Badge>
-                      )}
+                        {chat.unreadCount > 0 && (
+                          <Badge variant="default" className="ml-2">
+                            {chat.unreadCount}
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </ScrollArea>
@@ -493,6 +539,52 @@ export default function ChatPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {selectedChat.type === 'group' && (
+                  <Dialog open={showMemberList} onOpenChange={setShowMemberList}>
+                    <DialogTrigger asChild>
+                      <Button size="icon" variant="ghost" data-testid="button-member-list">
+                        <Info className="h-4 w-4" />
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>群成员 ({selectedChat.participants.length}人)</DialogTitle>
+                      </DialogHeader>
+                      <ScrollArea className="h-96">
+                        <div className="space-y-2">
+                          {selectedChat.participants.map((participant) => (
+                            <div
+                              key={participant.userId}
+                              className="flex items-center gap-3 p-3 rounded-lg hover-elevate"
+                              data-testid={`member-${participant.userId}`}
+                            >
+                              <Avatar>
+                                <AvatarFallback>
+                                  {participant.user ? (participant.user.nickname || participant.user.name).charAt(0) : '?'}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1">
+                                <div className="font-medium">
+                                  {participant.user ? (participant.user.nickname || participant.user.name) : '未知用户'}
+                                  {participant.role === 'owner' && (
+                                    <Badge variant="default" className="ml-2">群主</Badge>
+                                  )}
+                                  {participant.role === 'admin' && (
+                                    <Badge variant="secondary" className="ml-2">管理员</Badge>
+                                  )}
+                                </div>
+                                <div className="text-sm text-muted-foreground">
+                                  {participant.user?.position} {participant.user?.team && `· ${participant.user.team}`}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    </DialogContent>
+                  </Dialog>
+                )}
+                
                 {isConnected ? (
                   <Badge variant="outline" className="gap-1" data-testid="badge-connected">
                     <Wifi className="h-3 w-3" />
