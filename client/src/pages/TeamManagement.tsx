@@ -442,7 +442,7 @@ export default function TeamManagement({ userRole: propUserRole, userName: propU
               
               return (
                 <TableRow key={member.id} data-testid={`row-member-${member.id}`}>
-                  <TableCell className="text-muted-foreground text-sm font-mono">{index + 1}</TableCell>
+                  <TableCell className="text-muted-foreground text-sm font-mono">{filteredMembers.indexOf(member) + 1}</TableCell>
                   <TableCell className="font-medium">{member.name}</TableCell>
                   <TableCell>
                     <Badge variant="outline">{member.role}</Badge>
@@ -624,31 +624,44 @@ export default function TeamManagement({ userRole: propUserRole, userName: propU
       <Dialog open={showSupervisorDialog} onOpenChange={setShowSupervisorDialog}>
         <DialogContent data-testid="dialog-supervisor">
           <DialogHeader>
-            <DialogTitle>修改上级ID</DialogTitle>
+            <DialogTitle>修改上级</DialogTitle>
             <DialogDescription>
               {selectedMemberId && (() => {
                 const member = apiUsers.find(u => u.id === selectedMemberId);
-                return member ? `修改 ${member.nickname || member.name}（${member.role}）的上级ID` : '修改用户的上级ID';
+                return member ? `修改 ${member.nickname || member.name}（${member.role}）的上级` : '修改用户的上级';
               })()}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium">当前上级ID</label>
+              <label className="text-sm font-medium">当前上级</label>
               <Input
-                value={apiUsers.find(u => u.id === selectedMemberId)?.supervisorId || '无'}
+                value={(() => {
+                  const currentSupervisorId = apiUsers.find(u => u.id === selectedMemberId)?.supervisorId;
+                  if (!currentSupervisorId) return '无';
+                  const supervisor = apiUsers.find(u => u.id === currentSupervisorId);
+                  return supervisor ? `${supervisor.nickname || supervisor.name}（${supervisor.role}）` : '无';
+                })()}
                 disabled
                 className="bg-muted"
               />
             </div>
             <div>
-              <label className="text-sm font-medium">新上级ID *</label>
-              <Input
-                placeholder="请输入新的上级ID"
-                value={newSupervisorId}
-                onChange={(e) => setNewSupervisorId(e.target.value)}
-                data-testid="input-new-supervisor"
-              />
+              <label className="text-sm font-medium">新上级 *</label>
+              <Select value={newSupervisorId} onValueChange={setNewSupervisorId}>
+                <SelectTrigger data-testid="select-new-supervisor">
+                  <SelectValue placeholder="请选择新的上级" />
+                </SelectTrigger>
+                <SelectContent>
+                  {apiUsers
+                    .filter(u => u.id !== selectedMemberId && (u.role === '主管' || u.role === '总监' || u.role === '经理'))
+                    .map(u => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.nickname || u.name}（{u.role}）
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
               <p className="text-xs text-muted-foreground mt-1">
                 提示：系统会自动验证上级角色是否符合层级要求
               </p>
@@ -661,7 +674,7 @@ export default function TeamManagement({ userRole: propUserRole, userName: propU
             <Button 
               onClick={handleChangeSupervisor} 
               data-testid="button-confirm-supervisor"
-              disabled={updateUserMutation.isPending}
+              disabled={updateUserMutation.isPending || !newSupervisorId}
             >
               {updateUserMutation.isPending ? '更新中...' : '确认修改'}
             </Button>
