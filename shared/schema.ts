@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, jsonb, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -172,3 +172,12 @@ export const insertChatParticipantSchema = createInsertSchema(chatParticipants).
 
 export type InsertChatParticipant = z.infer<typeof insertChatParticipantSchema>;
 export type ChatParticipant = typeof chatParticipants.$inferSelect;
+
+// Session表（connect-pg-simple自动创建，这里定义以防止被删除）
+export const session = pgTable("session", {
+  sid: varchar("sid").primaryKey(), // Session ID
+  sess: jsonb("sess").notNull(), // Session数据
+  expire: timestamp("expire").notNull(), // 过期时间
+});
+
+export type Session = typeof session.$inferSelect;
