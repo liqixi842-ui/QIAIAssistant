@@ -33,7 +33,7 @@ app.use(session({
     secure: process.env.NODE_ENV === 'production', // HTTPS only in production
     httpOnly: true,
     sameSite: 'lax', // 防止CSRF攻击
-    maxAge: 1000 * 60 * 60 * 24 * 7 // 7 days
+    // 不设置maxAge，使其成为session cookie（关闭浏览器即失效）
   }
 }));
 

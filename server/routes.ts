@@ -154,7 +154,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // 验证上级ID存在并检查角色层级关系
-      const supervisor = await storage.getUserById(trimmedSupervisorId);
+      const supervisor = await storage.getUser(trimmedSupervisorId);
       if (!supervisor) {
         return res.status(400).json({ error: "上级ID不存在，请填写正确的上级ID" });
       }
@@ -200,6 +200,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error('注册失败:', error);
       res.status(500).json({ error: "注册失败" });
     }
+  });
+
+  /**
+   * 用户登出
+   * POST /api/auth/logout
+   */
+  app.post("/api/auth/logout", (req, res) => {
+    req.session.destroy((err) => {
+      if (err) {
+        console.error('登出失败:', err);
+        return res.status(500).json({ error: "登出失败" });
+      }
+      res.clearCookie('connect.sid'); // 清除session cookie
+      res.json({ success: true, message: "已成功退出登录" });
+    });
   });
 
   /**

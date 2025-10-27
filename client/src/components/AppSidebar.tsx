@@ -59,9 +59,24 @@ export default function AppSidebar({ userRole = '业务', userName = '未登录'
     (item) => !item.roles || item.roles.includes(userRole)
   );
 
-  const handleLogout = () => {
-    console.log('Logout clicked');
-    setLocation('/login');
+  const handleLogout = async () => {
+    try {
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include', // 确保发送cookie
+      });
+      
+      if (response.ok) {
+        console.log('成功退出登录');
+      } else {
+        console.error('登出API调用失败');
+      }
+    } catch (error) {
+      console.error('登出请求失败:', error);
+    } finally {
+      // 无论API是否成功，都跳转到登录页面
+      setLocation('/login');
+    }
   };
 
   return (
