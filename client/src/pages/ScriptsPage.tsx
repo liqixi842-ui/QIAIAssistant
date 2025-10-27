@@ -123,11 +123,8 @@ export default function ScriptsPage() {
   // 创建学习资料记录
   const createMaterialMutation = useMutation({
     mutationFn: async (data: { title: string; categoryId: string; fileUrl: string; fileType: string; fileSize: number }) => {
-      return await apiRequest('/api/learning-materials', {
-        method: 'POST',
-        body: JSON.stringify(data),
-        headers: { 'Content-Type': 'application/json' }
-      });
+      console.log('[ScriptsPage] Calling POST /api/learning-materials with data:', data);
+      return await apiRequest('POST', '/api/learning-materials', data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/learning-materials'] });
@@ -151,9 +148,7 @@ export default function ScriptsPage() {
   // 删除学习资料
   const deleteMaterialMutation = useMutation({
     mutationFn: async (id: string) => {
-      return await apiRequest(`/api/learning-materials/${id}`, {
-        method: 'DELETE'
-      });
+      return await apiRequest('DELETE', `/api/learning-materials/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/learning-materials'] });
@@ -253,7 +248,10 @@ export default function ScriptsPage() {
 
   // 文件上传成功回调
   const handleUploadSuccess = (fileUrl: string, file: File) => {
+    console.log('[ScriptsPage] handleUploadSuccess called', { fileUrl, fileName: file.name, uploadCategoryId });
+    
     if (!uploadCategoryId) {
+      console.error('[ScriptsPage] No category selected!');
       toast({
         title: "请选择分类",
         variant: "destructive",
@@ -262,6 +260,7 @@ export default function ScriptsPage() {
     }
 
     const title = uploadTitle.trim() || file.name;
+    console.log('[ScriptsPage] Creating material with:', { title, categoryId: uploadCategoryId, fileUrl });
 
     createMaterialMutation.mutate({
       title,

@@ -76,20 +76,18 @@ export default function ObjectUploader({
       const fileUrl = uploadURL.split('?')[0];
       setUploadProgress(100);
 
-      // 4. Notify parent component
+      // 4. Notify parent component (parent will handle success toast and cleanup)
+      console.log('[ObjectUploader] Upload successful, calling onUploadSuccess with fileUrl:', fileUrl);
       onUploadSuccess(fileUrl, selectedFile);
 
-      // Reset state
-      setSelectedFile(null);
-      setUploadProgress(0);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-
-      toast({
-        title: "上传成功",
-        description: `文件 "${selectedFile.name}" 已上传`,
-      });
+      // Reset local state
+      setTimeout(() => {
+        setSelectedFile(null);
+        setUploadProgress(0);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+      }, 500); // Delay reset to allow parent mutation to complete
     } catch (error: any) {
       console.error('上传失败:', error);
       toast({
