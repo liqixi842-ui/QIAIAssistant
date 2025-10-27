@@ -181,3 +181,28 @@ export const session = pgTable("session", {
 });
 
 export type Session = typeof session.$inferSelect;
+
+// 审计日志表 - 记录所有重要操作
+export const auditLogs = pgTable("audit_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  action: text("action").notNull(), // 操作类型：update_supervisor, update_password, delete_user, register, login, logout等
+  targetUserId: varchar("target_user_id"), // 被操作的用户ID（如果适用）
+  targetUsername: text("target_username"), // 被操作的用户名（如果适用）
+  operatorId: varchar("operator_id"), // 执行操作的用户ID
+  operatorUsername: text("operator_username"), // 执行操作的用户名
+  operatorRole: text("operator_role"), // 执行操作的用户角色
+  details: jsonb("details").$type<Record<string, any>>(), // 详细信息（JSON格式，比如：{old: "7", new: "8"}）
+  ipAddress: text("ip_address"), // IP地址
+  userAgent: text("user_agent"), // 浏览器信息
+  timestamp: text("timestamp").notNull().default(sql`CURRENT_TIMESTAMP`), // 时间戳
+  success: integer("success").notNull().default(1), // 是否成功：1成功，0失败
+  errorMessage: text("error_message"), // 错误信息（如果失败）
+});
+
+export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
+  id: true,
+  timestamp: true,
+});
+
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+export type AuditLog = typeof auditLogs.$inferSelect;

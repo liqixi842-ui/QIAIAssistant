@@ -24,6 +24,40 @@ import {
   comprehensiveAnalysisSchema
 } from "./ai/validation";
 import { aggregateByDimension, type GroupByDimension } from "./services/aggregation";
+import type { Request } from "express";
+
+// 辅助函数：记录审计日志
+async function logAudit(params: {
+  action: string;
+  operatorId?: string;
+  operatorUsername?: string;
+  operatorRole?: string;
+  targetUserId?: string;
+  targetUsername?: string;
+  details?: Record<string, any>;
+  success?: boolean;
+  errorMessage?: string;
+  req?: Request;
+}) {
+  try {
+    await storage.createAuditLog({
+      action: params.action,
+      operatorId: params.operatorId || null,
+      operatorUsername: params.operatorUsername || null,
+      operatorRole: params.operatorRole || null,
+      targetUserId: params.targetUserId || null,
+      targetUsername: params.targetUsername || null,
+      details: params.details || null,
+      ipAddress: params.req?.ip || params.req?.socket?.remoteAddress || null,
+      userAgent: params.req?.get('user-agent') || null,
+      success: params.success !== false ? 1 : 0,
+      errorMessage: params.errorMessage || null,
+    });
+    console.log(`📋 审计日志: ${params.action} by ${params.operatorUsername || '未知'} - ${params.success !== false ? '成功' : '失败'}`);
+  } catch (error) {
+    console.error('❌ 审计日志记录失败:', error);
+  }
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
@@ -184,6 +218,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         supervisorId: trimmedSupervisorId,
       });
 
+      // 记录审计日志
+      await logAudit({
+        action: 'register',
+        targetUserId: user.id,
+        targetUsername: user.username,
+        details: { 
+          role: user.role,
+          supervisorId: user.supervisorId,
+          nickname: user.nickname
+        },
+        success: true,
+        req
+      });
+
       res.json({ 
         success: true,
         message: "注册成功",
@@ -198,6 +246,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error('注册失败:', error);
+      
+      // 记录失败的审计日志
+      await logAudit({
+        action: 'register',
+        targetUsername: req.body.username,
+        details: { error: error instanceof Error ? error.message : '未知错误' },
+        success: false,
+        errorMessage: error instanceof Error ? error.message : '注册失败',
+        req
+      });
+      
       res.status(500).json({ error: "注册失败" });
     }
   });
@@ -206,12 +265,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * 用户登出
    * POST /api/auth/logout
    */
-  app.post("/api/auth/logout", (req, res) => {
-    req.session.destroy((err) => {
+  app.post("/api/auth/logout", async (req, res) => {
+    const userId = req.session.userId;
+    const username = req.session.username;
+    
+    req.session.destroy(async (err) => {
       if (err) {
         console.error('登出失败:', err);
+        
+        // 记录失败的审计日志
+        await logAudit({
+          action: 'logout',
+          operatorId: userId,
+          operatorUsername: username,
+          success: false,
+          errorMessage: '登出失败',
+          req
+        });
+        
         return res.status(500).json({ error: "登出失败" });
       }
+      
+      // 记录成功的审计日志
+      await logAudit({
+        action: 'logout',
+        operatorId: userId,
+        operatorUsername: username,
+        success: true,
+        req
+      });
+      
       res.clearCookie('connect.sid'); // 清除session cookie
       res.json({ success: true, message: "已成功退出登录" });
     });
@@ -263,11 +346,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
       req.session.role = user.role;
 
       // 显式保存session，确保cookie被发送
-      req.session.save((err) => {
+      req.session.save(async (err) => {
         if (err) {
           console.error('❌ Session保存失败:', err);
+          
+          // 记录失败的审计日志
+          await logAudit({
+            action: 'login',
+            operatorId: user.id,
+            operatorUsername: user.username,
+            operatorRole: user.role,
+            success: false,
+            errorMessage: 'Session保存失败',
+            req
+          });
+          
           return res.status(500).json({ error: "登录失败，请重试" });
         }
+
+        // 记录成功的审计日志
+        await logAudit({
+          action: 'login',
+          operatorId: user.id,
+          operatorUsername: user.username,
+          operatorRole: user.role,
+          details: { role: user.role, team: user.team },
+          success: true,
+          req
+        });
 
         console.log('✅ Session保存成功，userId:', user.id);
         res.json({
@@ -287,6 +393,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error('登录失败:', error);
+      
+      // 记录失败的审计日志
+      await logAudit({
+        action: 'login',
+        targetUsername: req.body.username,
+        details: { error: error instanceof Error ? error.message : '未知错误' },
+        success: false,
+        errorMessage: error instanceof Error ? error.message : '登录失败',
+        req
+      });
+      
       res.status(500).json({ error: "登录失败" });
     }
   });
@@ -397,19 +514,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // 保存旧值用于审计日志
+      const oldValues: Record<string, any> = {};
+      const newValues: Record<string, any> = {};
+      
       // 更新用户信息
       const updates: any = {};
-      if (supervisorId !== undefined) updates.supervisorId = supervisorId.trim();
-      if (nickname !== undefined) updates.nickname = nickname.trim();
-      if (role !== undefined) updates.role = role.trim();
-      if (position !== undefined) updates.position = position.trim();
-      if (team !== undefined) updates.team = team.trim();
+      if (supervisorId !== undefined) {
+        oldValues.supervisorId = targetUser.supervisorId;
+        newValues.supervisorId = supervisorId.trim();
+        updates.supervisorId = supervisorId.trim();
+      }
+      if (nickname !== undefined) {
+        oldValues.nickname = targetUser.nickname;
+        newValues.nickname = nickname.trim();
+        updates.nickname = nickname.trim();
+      }
+      if (role !== undefined) {
+        oldValues.role = targetUser.role;
+        newValues.role = role.trim();
+        updates.role = role.trim();
+      }
+      if (position !== undefined) {
+        oldValues.position = targetUser.position;
+        newValues.position = position.trim();
+        updates.position = position.trim();
+      }
+      if (team !== undefined) {
+        oldValues.team = targetUser.team;
+        newValues.team = team.trim();
+        updates.team = team.trim();
+      }
 
       const updatedUser = await storage.updateUser(id, updates);
 
       if (!updatedUser) {
         return res.status(404).json({ error: "更新失败" });
       }
+
+      // 记录审计日志
+      await logAudit({
+        action: 'update_user',
+        operatorId: currentUser.id,
+        operatorUsername: currentUser.username,
+        operatorRole: currentUser.role,
+        targetUserId: updatedUser.id,
+        targetUsername: updatedUser.username,
+        details: {
+          changes: Object.keys(newValues).map(key => `${key}: ${oldValues[key]} → ${newValues[key]}`).join(', '),
+          oldValues,
+          newValues
+        },
+        success: true,
+        req
+      });
 
       res.json({
         success: true,
@@ -427,6 +585,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error('更新用户信息失败:', error);
+      
+      // 记录失败的审计日志
+      await logAudit({
+        action: 'update_user',
+        operatorId: req.session.userId,
+        targetUserId: req.params.id,
+        details: { error: error instanceof Error ? error.message : '未知错误' },
+        success: false,
+        errorMessage: error instanceof Error ? error.message : '更新用户信息失败',
+        req
+      });
+      
       res.status(500).json({ error: "更新用户信息失败" });
     }
   });

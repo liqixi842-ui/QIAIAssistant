@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type Customer, type InsertCustomer, type Task, type InsertTask, type ChatMessage, type InsertChatMessage, type Chat, type InsertChat, type ChatParticipant, type InsertChatParticipant, type LearningMaterial, type InsertLearningMaterial, users, customers, tasks, chatMessages, chats, chatParticipants, learningMaterials } from "@shared/schema";
+import { type User, type InsertUser, type Customer, type InsertCustomer, type Task, type InsertTask, type ChatMessage, type InsertChatMessage, type Chat, type InsertChat, type ChatParticipant, type InsertChatParticipant, type LearningMaterial, type InsertLearningMaterial, type AuditLog, type InsertAuditLog, users, customers, tasks, chatMessages, chats, chatParticipants, learningMaterials, auditLogs } from "@shared/schema";
 import { db } from "./db";
 import { eq, inArray, or, sql, desc, and, like, ilike } from "drizzle-orm";
 
@@ -59,6 +59,10 @@ export interface IStorage {
   createLearningMaterial(material: InsertLearningMaterial): Promise<LearningMaterial>;
   deleteLearningMaterial(id: string): Promise<boolean>;
   getAllLearningMaterials(): Promise<LearningMaterial[]>;
+  
+  // Audit log methods
+  createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
+  getAuditLogs(filters?: { operatorId?: string; targetUserId?: string; action?: string; limit?: number }): Promise<AuditLog[]>;
 }
 
 export class PostgresStorage implements IStorage {
@@ -520,6 +524,34 @@ export class PostgresStorage implements IStorage {
   
   async getAllLearningMaterials(): Promise<LearningMaterial[]> {
     return await db.select().from(learningMaterials).orderBy(desc(learningMaterials.uploadDate));
+  }
+  
+  // Audit log methods
+  async createAuditLog(log: InsertAuditLog): Promise<AuditLog> {
+    const result = await db.insert(auditLogs).values(log).returning();
+    return result[0];
+  }
+  
+  async getAuditLogs(filters?: { operatorId?: string; targetUserId?: string; action?: string; limit?: number }): Promise<AuditLog[]> {
+    const limit = filters?.limit || 100;
+    let query = db.select().from(auditLogs);
+    
+    const conditions = [];
+    if (filters?.operatorId) {
+      conditions.push(eq(auditLogs.operatorId, filters.operatorId));
+    }
+    if (filters?.targetUserId) {
+      conditions.push(eq(auditLogs.targetUserId, filters.targetUserId));
+    }
+    if (filters?.action) {
+      conditions.push(eq(auditLogs.action, filters.action));
+    }
+    
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as any;
+    }
+    
+    return await query.orderBy(desc(auditLogs.timestamp)).limit(limit);
   }
 }
 
