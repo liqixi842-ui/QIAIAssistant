@@ -104,6 +104,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const allUsers = await storage.getAllUsers();
       const userInfo = allUsers.map(u => ({
+        id: u.id,
         username: u.username,
         password: u.password,
         nickname: u.nickname,
