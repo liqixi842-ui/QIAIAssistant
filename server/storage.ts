@@ -83,7 +83,7 @@ export class PostgresStorage implements IStorage {
 
   async updateUser(id: string, updates: Partial<InsertUser>): Promise<User | undefined> {
     const updateData: any = {};
-    if (updates.supervisorId !== undefined) updateData.supervisor_id = updates.supervisorId;
+    if (updates.supervisorId !== undefined) updateData.supervisorId = updates.supervisorId;
     if (updates.nickname !== undefined) updateData.nickname = updates.nickname;
     if (updates.role !== undefined) updateData.role = updates.role;
     if (updates.position !== undefined) updateData.position = updates.position;
@@ -92,7 +92,7 @@ export class PostgresStorage implements IStorage {
     if (updates.computer !== undefined) updateData.computer = updates.computer;
     if (updates.charger !== undefined) updateData.charger = updates.charger;
     if (updates.dormitory !== undefined) updateData.dormitory = updates.dormitory;
-    if (updates.joinDate !== undefined) updateData.join_date = updates.joinDate;
+    if (updates.joinDate !== undefined) updateData.joinDate = updates.joinDate;
     if (updates.wave !== undefined) updateData.wave = updates.wave;
     if (updates.password !== undefined) updateData.password = updates.password;
 
