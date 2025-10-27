@@ -2485,6 +2485,111 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============================================
+  // 反馈投诉建议 API
+  // ============================================
+
+  /**
+   * GET /api/feedbacks
+   * 获取所有反馈列表
+   */
+  app.get("/api/feedbacks", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const feedbacks = await storage.getAllFeedbacks();
+      res.json({ success: true, data: feedbacks });
+    } catch (error: any) {
+      console.error('获取反馈列表失败:', error);
+      res.status(500).json({ error: "获取反馈列表失败" });
+    }
+  });
+
+  /**
+   * POST /api/feedbacks
+   * 提交新的反馈
+   * Body: { title, content }
+   */
+  app.post("/api/feedbacks", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const currentUser = await storage.getUser(req.session.userId);
+      if (!currentUser) {
+        return res.status(401).json({ error: "用户不存在" });
+      }
+
+      const { title, content } = req.body;
+
+      if (!title || !content) {
+        return res.status(400).json({ error: "标题和内容不能为空" });
+      }
+
+      const newFeedback = await storage.createFeedback({
+        title,
+        content,
+        submitterId: currentUser.id,
+        submitterName: currentUser.nickname || currentUser.name,
+        isResolved: 0,
+      });
+
+      res.json({ success: true, data: newFeedback });
+    } catch (error: any) {
+      console.error('提交反馈失败:', error);
+      res.status(500).json({ error: "提交反馈失败" });
+    }
+  });
+
+  /**
+   * PATCH /api/feedbacks/:id/resolve
+   * 标记反馈为已处理/未处理（仅总监和主管可用）
+   * Body: { isResolved: 0 | 1 }
+   */
+  app.patch("/api/feedbacks/:id/resolve", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const currentUser = await storage.getUser(req.session.userId);
+      if (!currentUser) {
+        return res.status(401).json({ error: "用户不存在" });
+      }
+
+      // 权限检查：只有总监和主管可以标记已处理
+      if (!['总监', '主管'].includes(currentUser.role)) {
+        return res.status(403).json({ error: "只有总监和主管可以处理反馈" });
+      }
+
+      const { id } = req.params;
+      const { isResolved } = req.body;
+
+      const updates: any = { isResolved };
+      if (isResolved === 1) {
+        updates.resolvedAt = new Date().toISOString();
+        updates.resolvedBy = currentUser.id;
+      } else {
+        updates.resolvedAt = null;
+        updates.resolvedBy = null;
+      }
+
+      const updatedFeedback = await storage.updateFeedback(id, updates);
+
+      if (!updatedFeedback) {
+        return res.status(404).json({ error: "反馈不存在" });
+      }
+
+      res.json({ success: true, data: updatedFeedback });
+    } catch (error: any) {
+      console.error('更新反馈状态失败:', error);
+      res.status(500).json({ error: "更新反馈状态失败" });
+    }
+  });
+
+  // ============================================
   // 对象存储 API（Reference: blueprint:javascript_object_storage）
   // ============================================
   

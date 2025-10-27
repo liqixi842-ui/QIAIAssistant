@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type Customer, type InsertCustomer, type Task, type InsertTask, type ChatMessage, type InsertChatMessage, type Chat, type InsertChat, type ChatParticipant, type InsertChatParticipant, type LearningMaterial, type InsertLearningMaterial, type AuditLog, type InsertAuditLog, users, customers, tasks, chatMessages, chats, chatParticipants, learningMaterials, auditLogs } from "@shared/schema";
+import { type User, type InsertUser, type Customer, type InsertCustomer, type Task, type InsertTask, type ChatMessage, type InsertChatMessage, type Chat, type InsertChat, type ChatParticipant, type InsertChatParticipant, type LearningMaterial, type InsertLearningMaterial, type AuditLog, type InsertAuditLog, type Feedback, type InsertFeedback, users, customers, tasks, chatMessages, chats, chatParticipants, learningMaterials, auditLogs, feedbacks } from "@shared/schema";
 import { db } from "./db";
 import { eq, inArray, or, sql, desc, and, like, ilike } from "drizzle-orm";
 
@@ -63,6 +63,12 @@ export interface IStorage {
   
   // Audit log methods
   createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
+  
+  // Feedback methods
+  getFeedback(id: string): Promise<Feedback | undefined>;
+  createFeedback(feedback: InsertFeedback): Promise<Feedback>;
+  updateFeedback(id: string, updates: Partial<InsertFeedback>): Promise<Feedback | undefined>;
+  getAllFeedbacks(): Promise<Feedback[]>;
   getAuditLogs(filters?: { operatorId?: string; targetUserId?: string; action?: string; limit?: number }): Promise<AuditLog[]>;
 }
 
@@ -572,6 +578,26 @@ export class PostgresStorage implements IStorage {
     }
     
     return await query.orderBy(desc(auditLogs.timestamp)).limit(limit);
+  }
+  
+  // Feedback methods
+  async getFeedback(id: string): Promise<Feedback | undefined> {
+    const result = await db.select().from(feedbacks).where(eq(feedbacks.id, id)).limit(1);
+    return result[0];
+  }
+
+  async createFeedback(feedback: InsertFeedback): Promise<Feedback> {
+    const result = await db.insert(feedbacks).values(feedback).returning();
+    return result[0];
+  }
+
+  async updateFeedback(id: string, updates: Partial<InsertFeedback>): Promise<Feedback | undefined> {
+    const result = await db.update(feedbacks).set(updates).where(eq(feedbacks.id, id)).returning();
+    return result[0];
+  }
+
+  async getAllFeedbacks(): Promise<Feedback[]> {
+    return await db.select().from(feedbacks).orderBy(desc(feedbacks.submittedAt));
   }
 }
 

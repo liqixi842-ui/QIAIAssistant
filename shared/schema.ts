@@ -210,3 +210,24 @@ export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
 
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
 export type AuditLog = typeof auditLogs.$inferSelect;
+
+// 反馈表 - 用户投诉建议
+export const feedbacks = pgTable("feedbacks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(), // 标题
+  content: text("content").notNull(), // 内容
+  submitterId: varchar("submitter_id").notNull(), // 提交者ID
+  submitterName: text("submitter_name").notNull(), // 提交者名称（冗余字段，方便查询）
+  isResolved: integer("is_resolved").notNull().default(0), // 是否已处理：0未处理，1已处理
+  submittedAt: text("submitted_at").notNull().default(sql`CURRENT_TIMESTAMP`), // 提交时间
+  resolvedAt: text("resolved_at"), // 处理时间
+  resolvedBy: varchar("resolved_by"), // 处理者ID
+});
+
+export const insertFeedbackSchema = createInsertSchema(feedbacks).omit({
+  id: true,
+  submittedAt: true,
+});
+
+export type InsertFeedback = z.infer<typeof insertFeedbackSchema>;
+export type Feedback = typeof feedbacks.$inferSelect;
