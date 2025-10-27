@@ -50,33 +50,64 @@ export default function ObjectUploader({
       // 1. Get upload URL from backend
       const uploadUrlResponse = await fetch('/api/objects/upload', {
         method: 'POST',
-        credentials: 'include'
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contentType: selectedFile.type || 'application/octet-stream'
+        })
       });
 
       if (!uploadUrlResponse.ok) {
         throw new Error('获取上传URL失败');
       }
 
-      const { uploadURL } = await uploadUrlResponse.json();
+      const { uploadURL, storageType } = await uploadUrlResponse.json();
 
-      // 2. Upload file directly to object storage
-      const uploadResponse = await fetch(uploadURL, {
-        method: 'PUT',
-        body: selectedFile,
-        headers: {
-          'Content-Type': selectedFile.type || 'application/octet-stream',
-        },
-      });
+      let fileUrl: string;
 
-      if (!uploadResponse.ok) {
-        throw new Error('文件上传失败');
+      if (storageType === 'local') {
+        // 本地存储：上传到后端API（安全设计：使用fileId）
+        console.log('[ObjectUploader] 使用本地存储上传');
+        const uploadResponse = await fetch(uploadURL.uploadEndpoint, {
+          method: 'POST',
+          credentials: 'include',
+          body: selectedFile,
+          headers: {
+            'Content-Type': selectedFile.type || 'application/octet-stream',
+          },
+        });
+
+        if (!uploadResponse.ok) {
+          const errorData = await uploadResponse.json().catch(() => ({}));
+          throw new Error(errorData.error || '文件上传失败');
+        }
+
+        const result = await uploadResponse.json();
+        fileUrl = result.publicUrl;
+      } else {
+        // 对象存储：直接上传到云存储
+        console.log('[ObjectUploader] 使用对象存储上传');
+        const uploadResponse = await fetch(uploadURL, {
+          method: 'PUT',
+          body: selectedFile,
+          headers: {
+            'Content-Type': selectedFile.type || 'application/octet-stream',
+          },
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error('文件上传失败');
+        }
+
+        // Extract file URL (remove query parameters)
+        fileUrl = uploadURL.split('?')[0];
       }
 
-      // 3. Extract file URL (remove query parameters)
-      const fileUrl = uploadURL.split('?')[0];
       setUploadProgress(100);
 
-      // 4. Notify parent component (parent will handle success toast and cleanup)
+      // Notify parent component (parent will handle success toast and cleanup)
       console.log('[ObjectUploader] Upload successful, calling onUploadSuccess with fileUrl:', fileUrl);
       onUploadSuccess(fileUrl, selectedFile);
 

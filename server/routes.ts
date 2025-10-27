@@ -1788,6 +1788,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   /**
    * POST /api/objects/upload
    * 获取文件上传的预签名URL（学习资料使用公开上传）
+   * 支持Replit对象存储和生产环境本地存储
    */
   app.post("/api/objects/upload", async (req, res) => {
     if (!req.session.userId) {
@@ -1795,14 +1796,96 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     try {
-      const { ObjectStorageService } = await import("./objectStorage");
-      const objectStorageService = new ObjectStorageService();
-      // 学习资料使用公开上传，以便Office Online预览
-      const uploadURL = await objectStorageService.getPublicUploadURL();
-      res.json({ uploadURL });
+      const { contentType } = req.body;
+      
+      // 检查是否在Replit环境（有对象存储环境变量）
+      const hasObjectStorage = !!process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
+      
+      if (hasObjectStorage) {
+        // Replit环境：使用对象存储
+        console.log("📦 使用Replit对象存储");
+        const { ObjectStorageService } = await import("./objectStorage");
+        const objectStorageService = new ObjectStorageService();
+        const uploadURL = await objectStorageService.getPublicUploadURL();
+        res.json({ uploadURL, storageType: 'object' });
+      } else {
+        // 生产环境：使用本地文件存储
+        console.log("💾 使用本地文件存储");
+        const { localFileStorage } = await import("./localFileStorage");
+        const uploadConfig = await localFileStorage.getPublicUploadURL(contentType || 'application/octet-stream');
+        res.json({ 
+          uploadURL: uploadConfig,
+          storageType: 'local'
+        });
+      }
     } catch (error: any) {
       console.error('获取上传URL失败:', error);
       res.status(500).json({ error: "获取上传URL失败", details: error.message });
+    }
+  });
+
+  /**
+   * POST /api/objects/local-upload/:fileId
+   * 本地文件上传端点（生产环境使用）
+   * 安全设计：服务器端验证fileId，不信任客户端路径
+   */
+  app.post("/api/objects/local-upload/:fileId", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const { fileId } = req.params;
+      const contentType = req.headers['content-type'] || 'application/octet-stream';
+      
+      // 验证fileId格式（UUID）
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(fileId)) {
+        return res.status(400).json({ error: "无效的文件ID" });
+      }
+
+      const { localFileStorage } = await import("./localFileStorage");
+      
+      // 获取上传的文件数据（带大小限制）
+      const chunks: Buffer[] = [];
+      let totalSize = 0;
+      const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
+      
+      req.on('data', (chunk) => {
+        totalSize += chunk.length;
+        if (totalSize > MAX_FILE_SIZE) {
+          req.pause();
+          return res.status(413).json({ error: "文件过大，最大100MB" });
+        }
+        chunks.push(chunk);
+      });
+      
+      req.on('end', async () => {
+        try {
+          const fileBuffer = Buffer.concat(chunks);
+          
+          // 服务器端生成安全的文件路径（不信任客户端）
+          const publicUrl = await localFileStorage.saveUploadedFileById(
+            fileId,
+            fileBuffer,
+            contentType
+          );
+          
+          console.log("✅ 本地文件上传成功:", publicUrl);
+          res.json({ success: true, publicUrl });
+        } catch (error: any) {
+          console.error("❌ 保存文件失败:", error);
+          res.status(500).json({ error: "保存文件失败", details: error.message });
+        }
+      });
+      
+      req.on('error', (error) => {
+        console.error("❌ 上传请求错误:", error);
+        res.status(500).json({ error: "上传失败" });
+      });
+    } catch (error: any) {
+      console.error('本地上传失败:', error);
+      res.status(500).json({ error: "本地上传失败", details: error.message });
     }
   });
   

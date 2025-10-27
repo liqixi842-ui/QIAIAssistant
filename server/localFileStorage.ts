@@ -32,46 +32,71 @@ export class LocalFileStorageService {
   }
 
   /**
-   * 获取上传URL（本地存储时返回一个临时标识）
+   * 获取上传URL（本地存储时返回fileId，不暴露路径）
    */
   async getPublicUploadURL(contentType: string): Promise<{
-    url: string;
     fileId: string;
-    publicUrl: string;
+    uploadEndpoint: string;
   }> {
     await this.ensureUploadDir();
 
     const fileId = randomUUID();
-    const ext = this.getFileExtension(contentType);
-    const fileName = `${fileId}${ext}`;
-    const filePath = path.join(this.uploadDir, fileName);
-    const publicUrl = `${this.baseUrl}/${fileName}`;
+    const uploadEndpoint = `/api/objects/local-upload/${fileId}`;
 
     console.log("📁 本地文件上传配置:", {
       fileId,
-      fileName,
-      filePath,
-      publicUrl,
+      uploadEndpoint,
     });
 
-    // 返回本地标识（前端会识别local:前缀并使用不同的上传逻辑）
+    // 只返回fileId和端点，不暴露文件系统路径
     return {
-      url: `local:${filePath}`, // 标记为本地上传
       fileId,
-      publicUrl, // 最终访问URL
+      uploadEndpoint,
     };
   }
 
   /**
-   * 保存上传的文件
+   * 根据fileId保存上传的文件（服务器端生成安全路径）
+   */
+  async saveUploadedFileById(
+    fileId: string,
+    fileBuffer: Buffer,
+    contentType: string
+  ): Promise<string> {
+    await this.ensureUploadDir();
+
+    // 验证fileId格式
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(fileId)) {
+      throw new Error("无效的文件ID格式");
+    }
+
+    const ext = this.getFileExtension(contentType);
+    const fileName = `${fileId}${ext}`;
+    
+    // 使用path.resolve确保路径在uploadDir内，防止路径遍历攻击
+    const safePath = path.resolve(this.uploadDir, fileName);
+    
+    // 二次验证：确保解析后的路径仍在uploadDir内
+    if (!safePath.startsWith(path.resolve(this.uploadDir))) {
+      throw new Error("非法的文件路径");
+    }
+
+    await fs.writeFile(safePath, fileBuffer);
+    console.log("✅ 文件已安全保存:", safePath);
+    
+    return `${this.baseUrl}/${fileName}`;
+  }
+
+  /**
+   * 保存上传的文件（已废弃，保留向后兼容）
+   * @deprecated 使用 saveUploadedFileById 替代
    */
   async saveUploadedFile(
     filePath: string,
     fileBuffer: Buffer
   ): Promise<string> {
-    await fs.writeFile(filePath, fileBuffer);
-    const fileName = path.basename(filePath);
-    return `${this.baseUrl}/${fileName}`;
+    throw new Error("此方法已废弃，请使用saveUploadedFileById");
   }
 
   /**
