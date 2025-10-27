@@ -127,7 +127,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     
     try {
-      const { db } = await import("@db");
+      const { db } = await import("./db");
       const { sql } = await import("drizzle-orm");
       
       // 更新天晨的ID从UUID改为8
