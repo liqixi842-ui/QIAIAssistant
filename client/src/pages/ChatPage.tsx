@@ -229,15 +229,48 @@ export default function ChatPage() {
     return () => scrollArea.removeEventListener('scroll', handleScroll);
   }, [messages.length]);
 
+  // 打开聊天室时标记已读
+  useEffect(() => {
+    if (selectedChatId) {
+      // 标记当前聊天室为已读
+      apiRequest('PATCH', `/api/chats/${selectedChatId}/read`, {})
+        .then(() => {
+          // 刷新聊天列表以更新未读计数
+          queryClient.invalidateQueries({ queryKey: ['/api/chats'] });
+        })
+        .catch(error => {
+          console.error('标记已读失败:', error);
+        });
+    }
+  }, [selectedChatId]);
+
+  // 发送消息mutation
+  const sendMessageMutation = useMutation({
+    mutationFn: async ({ chatId, content }: { chatId: string; content: string }) => {
+      return await apiRequest('POST', '/api/chat/messages', { chatId, content });
+    },
+    onSuccess: () => {
+      // 刷新消息列表
+      queryClient.invalidateQueries({ queryKey: ['/api/chat/messages', selectedChatId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/chats'] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: '发送失败',
+        description: error.message || '发送消息时出错',
+        variant: 'destructive'
+      });
+    }
+  });
+
   // 发送消息
   const handleSendMessage = () => {
     if (!message.trim() || !selectedChatId) return;
 
-    sendMessage({
-      type: 'chat',
+    // 通过API发送消息（会保存到数据库并通过WebSocket广播）
+    sendMessageMutation.mutate({
       chatId: selectedChatId,
-      content: message.trim(),
-      messageId: `${Date.now()}-${Math.random()}`,
+      content: message.trim()
     });
 
     setMessage('');

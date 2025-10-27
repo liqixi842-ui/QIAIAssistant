@@ -112,6 +112,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.sendFile(filePath);
   });
 
+  app.get("/deploy/storage-fixed", async (req, res) => {
+    const token = req.query.token;
+    if (token !== "deploy2025") {
+      return res.status(403).send("Forbidden");
+    }
+    
+    const fs = await import('fs');
+    const path = await import('path');
+    const filePath = path.resolve(import.meta.dirname, 'storage.ts');
+    
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Content-Disposition', 'attachment; filename="storage.ts"');
+    res.sendFile(filePath);
+  });
+
+  app.get("/deploy/websocket-context", async (req, res) => {
+    const token = req.query.token;
+    if (token !== "deploy2025") {
+      return res.status(403).send("Forbidden");
+    }
+    
+    const fs = await import('fs');
+    const path = await import('path');
+    const filePath = path.resolve(import.meta.dirname, '..', 'client', 'src', 'contexts', 'WebSocketContext.tsx');
+    
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Content-Disposition', 'attachment; filename="WebSocketContext.tsx"');
+    res.sendFile(filePath);
+  });
+
   app.get("/debug/users", async (req, res) => {
     const token = req.query.token;
     if (token !== "debug2025") {
@@ -2185,6 +2215,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('获取聊天消息失败:', error);
       res.status(500).json({ error: "获取聊天消息失败", details: error.message });
+    }
+  });
+
+  /**
+   * POST /api/chat/messages
+   * 发送并保存聊天消息
+   * Body: { chatId, content }
+   */
+  app.post("/api/chat/messages", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const { chatId, content } = req.body;
+      
+      if (!chatId || !content) {
+        return res.status(400).json({ error: "请提供chatId和content" });
+      }
+      
+      // 检查用户是否在该聊天室中
+      const isInChat = await storage.isUserInChat(chatId, req.session.userId);
+      if (!isInChat) {
+        return res.status(403).json({ error: "您不在此聊天室中" });
+      }
+      
+      // 获取发送者信息
+      const sender = await storage.getUser(req.session.userId);
+      if (!sender) {
+        return res.status(401).json({ error: "用户不存在" });
+      }
+      
+      // 保存消息到数据库
+      const message = await storage.createChatMessage({
+        chatId,
+        senderId: req.session.userId,
+        senderName: sender.nickname || sender.name,
+        content: content.trim()
+      });
+      
+      // 通过WebSocket广播消息
+      const wsMessage = {
+        type: 'chat',
+        chatId,
+        messageId: message.id,
+        senderId: sender.id,
+        senderName: sender.nickname || sender.name,
+        content: message.content,
+        timestamp: message.timestamp
+      };
+      
+      // 广播给聊天室所有在线用户
+      if (wss) {
+        wss.clients.forEach(client => {
+          if (client.readyState === 1) {
+            try {
+              client.send(JSON.stringify(wsMessage));
+            } catch (error) {
+              console.error('广播消息失败:', error);
+            }
+          }
+        });
+      }
+      
+      res.json({ success: true, data: message });
+    } catch (error: any) {
+      console.error('发送消息失败:', error);
+      res.status(500).json({ error: "发送消息失败", details: error.message });
+    }
+  });
+
+  /**
+   * PATCH /api/chats/:chatId/read
+   * 标记聊天室为已读
+   */
+  app.patch("/api/chats/:chatId/read", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const { chatId } = req.params;
+      
+      // 检查用户是否在该聊天室中
+      const isInChat = await storage.isUserInChat(chatId, req.session.userId);
+      if (!isInChat) {
+        return res.status(403).json({ error: "您不在此聊天室中" });
+      }
+      
+      // 标记为已读（更新lastReadAt时间戳）
+      await storage.markChatAsRead(chatId, req.session.userId);
+      
+      res.json({ success: true, message: "已标记为已读" });
+    } catch (error: any) {
+      console.error('标记已读失败:', error);
+      res.status(500).json({ error: "标记已读失败", details: error.message });
     }
   });
 

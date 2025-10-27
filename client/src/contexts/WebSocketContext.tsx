@@ -32,6 +32,8 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
   const [lastMessage, setLastMessage] = useState<WSMessage | null>(null);
   const [onlineUsers, setOnlineUsers] = useState<Array<{ userId: string; username: string; nickname: string }>>([]);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const maxReconnectAttempts = 10;
 
   useEffect(() => {
     const currentUserStr = localStorage.getItem('currentUser');
@@ -48,6 +50,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
       socket.onopen = () => {
         console.log('WebSocket全局连接已建立');
         setIsConnected(true);
+        reconnectAttemptsRef.current = 0; // 重置重连计数
         
         // 发送身份验证
         socket.send(JSON.stringify({
@@ -84,8 +87,21 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
       };
 
       socket.onclose = () => {
-        console.log('WebSocket已断开，不自动重连');
+        console.log('WebSocket已断开，尝试重连...');
         setIsConnected(false);
+        
+        // 自动重连（指数退避）
+        if (reconnectAttemptsRef.current < maxReconnectAttempts) {
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000);
+          console.log(`${delay/1000}秒后尝试第${reconnectAttemptsRef.current + 1}次重连...`);
+          
+          reconnectTimeoutRef.current = setTimeout(() => {
+            reconnectAttemptsRef.current += 1;
+            connect();
+          }, delay);
+        } else {
+          console.log('达到最大重连次数，停止重连');
+        }
       };
 
       socket.onerror = (error) => {

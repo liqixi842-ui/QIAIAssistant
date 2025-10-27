@@ -439,9 +439,13 @@ export class PostgresStorage implements IStorage {
     }
     
     // 不存在私聊，创建新的
+    // 获取对方用户信息以设置聊天室名称
+    const otherUser = await this.getUser(userId2);
+    const chatName = otherUser ? (otherUser.nickname || otherUser.name) : '未命名';
+    
     const newChat = await this.createChat({
       type: 'direct',
-      name: null,
+      name: chatName,
       createdBy: userId1
     });
     
@@ -492,6 +496,15 @@ export class PostgresStorage implements IStorage {
       ))
       .limit(1);
     return result.length > 0;
+  }
+  
+  async markChatAsRead(chatId: string, userId: string): Promise<void> {
+    await db.update(chatParticipants)
+      .set({ lastReadAt: sql`CURRENT_TIMESTAMP` })
+      .where(and(
+        eq(chatParticipants.chatId, chatId),
+        eq(chatParticipants.userId, userId)
+      ));
   }
   
   // User search methods
