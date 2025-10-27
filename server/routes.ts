@@ -769,6 +769,87 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  /**
+   * 删除用户（仅主管可用）
+   * DELETE /api/users/:id
+   */
+  app.delete("/api/users/:id", async (req, res) => {
+    try {
+      // 验证用户已登录
+      if (!req.session.userId) {
+        return res.status(401).json({ error: "未登录" });
+      }
+
+      // 验证是否为主管
+      const currentUser = await storage.getUser(req.session.userId);
+      if (!currentUser || currentUser.role !== '主管') {
+        return res.status(403).json({ error: "只有主管可以删除用户" });
+      }
+
+      const { id } = req.params;
+
+      // 验证用户存在
+      const targetUser = await storage.getUser(id);
+      if (!targetUser) {
+        return res.status(404).json({ error: "用户不存在" });
+      }
+
+      // 禁止删除自己
+      if (id === req.session.userId) {
+        return res.status(400).json({ error: "不能删除自己的账户" });
+      }
+
+      // TODO: 这里应该先检查用户是否有关联数据（客户、任务等），确保数据完整性
+      // 但为了简单起见，我们暂时只删除用户账户
+
+      // 删除用户（需要在storage中实现deleteUser方法）
+      const success = await storage.deleteUser(id);
+
+      if (!success) {
+        return res.status(500).json({ error: "删除失败" });
+      }
+
+      // 记录审计日志
+      await logAudit({
+        action: 'delete_user',
+        operatorId: currentUser.id,
+        operatorUsername: currentUser.username,
+        operatorRole: currentUser.role,
+        targetUserId: targetUser.id,
+        targetUsername: targetUser.username,
+        details: {
+          deletedUser: {
+            username: targetUser.username,
+            name: targetUser.name,
+            role: targetUser.role
+          }
+        },
+        success: true,
+        req
+      });
+
+      res.json({
+        success: true,
+        message: "用户已删除"
+      });
+    } catch (error) {
+      console.error('删除用户失败:', error);
+      
+      // 记录失败的审计日志
+      await logAudit({
+        action: 'delete_user',
+        operatorId: req.session.userId,
+        targetUserId: req.params.id,
+        details: { error: error instanceof Error ? error.message : '未知错误' },
+        success: false,
+        errorMessage: error instanceof Error ? error.message : '删除用户失败',
+        req
+      });
+      
+      res.status(500).json({ error: "删除用户失败" });
+    }
+  });
+
   // ============================================
   // AI 分析 API 路由
   // ============================================

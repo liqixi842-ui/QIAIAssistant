@@ -85,6 +85,7 @@ export default function TeamManagement({ userRole: propUserRole, userName: propU
   const [searchTerm, setSearchTerm] = useState('');
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<EquipmentInfo>>({});
+  const [selectedRole, setSelectedRole] = useState<string>('');
 
   // 从localStorage获取当前登录用户信息
   const currentUserStr = localStorage.getItem('currentUser');
@@ -118,12 +119,12 @@ export default function TeamManagement({ userRole: propUserRole, userName: propU
     supervisorId: user.supervisorId || null,
     status: 'active' as const,
     equipment: {
-      phoneCount: user.phone || 0,
-      computerCount: user.computer || 0,
-      chargerCount: user.charger || 0,
-      dormitory: user.dormitory || '',
-      joinDate: user.joinDate || '',
-      waveNumber: user.wave || '',
+      phoneCount: user.phone ?? 0,
+      computerCount: user.computer ?? 0,
+      chargerCount: user.charger ?? 0,
+      dormitory: user.dormitory ?? '',
+      joinDate: user.joinDate ?? '',
+      waveNumber: user.wave ?? '',
     }
   }));
   
@@ -198,20 +199,26 @@ export default function TeamManagement({ userRole: propUserRole, userName: propU
 
   const saveEdit = async (memberId: string) => {
     try {
-      const response = await apiRequest('PATCH', `/api/users/${memberId}/equipment`, {
-        phone: editForm.phoneCount || 0,
-        computer: editForm.computerCount || 0,
-        charger: editForm.chargerCount || 0,
-        dormitory: editForm.dormitory || '',
-        joinDate: editForm.joinDate || '',
-        wave: editForm.waveNumber || ''
-      });
+      const payload = {
+        phone: editForm.phoneCount ?? 0,
+        computer: editForm.computerCount ?? 0,
+        charger: editForm.chargerCount ?? 0,
+        dormitory: editForm.dormitory ?? '',
+        joinDate: editForm.joinDate ?? '',
+        wave: editForm.waveNumber ?? ''
+      };
+      
+      console.log('保存设备信息:', payload);
+      
+      const response = await apiRequest('PATCH', `/api/users/${memberId}/equipment`, payload);
+      
+      console.log('服务器响应:', response);
 
       // 刷新数据并等待完成
       await queryClient.invalidateQueries({ queryKey: ['/api/users'] });
       
       // 等待一小段时间确保数据已写入
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 200));
       
       await queryClient.refetchQueries({ queryKey: ['/api/users'] });
 
@@ -223,6 +230,7 @@ export default function TeamManagement({ userRole: propUserRole, userName: propU
       setEditingMemberId(null);
       setEditForm({});
     } catch (error) {
+      console.error('保存失败:', error);
       toast({
         title: "保存失败",
         description: error instanceof Error ? error.message : "未知错误",
@@ -239,17 +247,21 @@ export default function TeamManagement({ userRole: propUserRole, userName: propU
 
   // 更新用户上级的mutation
   const updateUserMutation = useMutation({
-    mutationFn: async ({ userId, supervisorId }: { userId: string; supervisorId: string }) => {
-      return await apiRequest('PATCH', `/api/users/${userId}`, { supervisorId });
+    mutationFn: async ({ userId, supervisorId, role }: { userId: string; supervisorId?: string; role?: string }) => {
+      const payload: any = {};
+      if (supervisorId !== undefined) payload.supervisorId = supervisorId;
+      if (role !== undefined) payload.role = role;
+      return await apiRequest('PATCH', `/api/users/${userId}`, payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/users'] });
       toast({
         title: "成功",
-        description: "上级ID已更新"
+        description: "用户信息已更新"
       });
       setShowSupervisorDialog(false);
       setNewSupervisorId('');
+      setSelectedRole('');
     },
     onError: (error: any) => {
       toast({
@@ -260,20 +272,66 @@ export default function TeamManagement({ userRole: propUserRole, userName: propU
     }
   });
 
+  // 删除用户的mutation
+  const deleteUserMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      return await apiRequest('DELETE', `/api/users/${userId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      toast({
+        title: "成功",
+        description: "用户已删除"
+      });
+      setShowDeleteDialog(false);
+      setSelectedMemberId(null);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "删除失败",
+        description: error.message || "删除用户失败",
+        variant: "destructive"
+      });
+    }
+  });
+
   const handleChangeSupervisor = () => {
-    if (!selectedMemberId || !newSupervisorId.trim()) {
+    if (!selectedMemberId) {
       toast({
         title: "错误",
-        description: "请输入上级ID",
+        description: "未选择用户",
         variant: "destructive"
       });
       return;
     }
 
-    updateUserMutation.mutate({
-      userId: selectedMemberId,
-      supervisorId: newSupervisorId.trim()
-    });
+    const payload: { userId: string; supervisorId?: string; role?: string } = {
+      userId: selectedMemberId
+    };
+
+    if (newSupervisorId && newSupervisorId.trim()) {
+      payload.supervisorId = newSupervisorId.trim();
+    }
+
+    if (selectedRole && selectedRole.trim()) {
+      payload.role = selectedRole.trim();
+    }
+
+    if (!payload.supervisorId && !payload.role) {
+      toast({
+        title: "错误",
+        description: "请至少修改一项",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    updateUserMutation.mutate(payload);
+  };
+
+  const handleDeleteUser = () => {
+    if (!selectedMemberId) return;
+    deleteUserMutation.mutate(selectedMemberId);
   };
 
   const equipmentStats = {
@@ -624,15 +682,38 @@ export default function TeamManagement({ userRole: propUserRole, userName: propU
       <Dialog open={showSupervisorDialog} onOpenChange={setShowSupervisorDialog}>
         <DialogContent data-testid="dialog-supervisor">
           <DialogHeader>
-            <DialogTitle>修改上级</DialogTitle>
+            <DialogTitle>修改用户信息</DialogTitle>
             <DialogDescription>
               {selectedMemberId && (() => {
                 const member = apiUsers.find(u => u.id === selectedMemberId);
-                return member ? `修改 ${member.nickname || member.name}（${member.role}）的上级` : '修改用户的上级';
+                return member ? `修改 ${member.nickname || member.name}（${member.role}）的上级和职位` : '修改用户信息';
               })()}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">当前职位</label>
+              <Input
+                value={apiUsers.find(u => u.id === selectedMemberId)?.role || '无'}
+                disabled
+                className="bg-muted"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">新职位（可选）</label>
+              <Select value={selectedRole} onValueChange={setSelectedRole}>
+                <SelectTrigger data-testid="select-new-role">
+                  <SelectValue placeholder="选择新职位（不修改请留空）" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="业务">业务</SelectItem>
+                  <SelectItem value="经理">经理</SelectItem>
+                  <SelectItem value="总监">总监</SelectItem>
+                  <SelectItem value="主管">主管</SelectItem>
+                  <SelectItem value="后勤">后勤</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div>
               <label className="text-sm font-medium">当前上级</label>
               <Input
@@ -647,10 +728,10 @@ export default function TeamManagement({ userRole: propUserRole, userName: propU
               />
             </div>
             <div>
-              <label className="text-sm font-medium">新上级 *</label>
+              <label className="text-sm font-medium">新上级（可选）</label>
               <Select value={newSupervisorId} onValueChange={setNewSupervisorId}>
                 <SelectTrigger data-testid="select-new-supervisor">
-                  <SelectValue placeholder="请选择新的上级" />
+                  <SelectValue placeholder="选择新上级（不修改请留空）" />
                 </SelectTrigger>
                 <SelectContent>
                   {apiUsers
@@ -668,13 +749,17 @@ export default function TeamManagement({ userRole: propUserRole, userName: propU
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowSupervisorDialog(false)}>
+            <Button variant="outline" onClick={() => {
+              setShowSupervisorDialog(false);
+              setNewSupervisorId('');
+              setSelectedRole('');
+            }}>
               取消
             </Button>
             <Button 
               onClick={handleChangeSupervisor} 
               data-testid="button-confirm-supervisor"
-              disabled={updateUserMutation.isPending || !newSupervisorId}
+              disabled={updateUserMutation.isPending}
             >
               {updateUserMutation.isPending ? '更新中...' : '确认修改'}
             </Button>
@@ -713,7 +798,10 @@ export default function TeamManagement({ userRole: propUserRole, userName: propU
           <DialogHeader>
             <DialogTitle>删除账户</DialogTitle>
             <DialogDescription>
-              确定要删除此成员账户吗？此操作无法撤销。
+              {selectedMemberId && (() => {
+                const member = apiUsers.find(u => u.id === selectedMemberId);
+                return member ? `确定要删除 ${member.nickname || member.name}（${member.role}）的账户吗？此操作无法撤销。` : '确定要删除此成员账户吗？此操作无法撤销。';
+              })()}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -722,10 +810,11 @@ export default function TeamManagement({ userRole: propUserRole, userName: propU
             </Button>
             <Button 
               variant="destructive" 
-              onClick={handleDeleteMember}
+              onClick={handleDeleteUser}
               data-testid="button-confirm-delete"
+              disabled={deleteUserMutation.isPending}
             >
-              确认删除
+              {deleteUserMutation.isPending ? '删除中...' : '确认删除'}
             </Button>
           </DialogFooter>
         </DialogContent>
