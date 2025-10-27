@@ -87,7 +87,26 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (2025-01-27)
 
-1. **✅ Registration System Overhaul - Role Hierarchy Validation (Latest)**:
+1. **✅ Session Security & Logout Implementation (Latest)**:
+   - **Problem Fixed**: Users remained logged in after closing/reopening browser
+   - **Root Cause**: Session cookie had 7-day persistent maxAge
+   - **Session Configuration**:
+     - Removed maxAge completely → Cookie now expires on browser close
+     - True session cookie (non-persistent)
+     - Browser automatically deletes cookie when closed
+   - **Complete Logout Flow**:
+     - Backend: POST /api/auth/logout endpoint
+     - Session destruction via `req.session.destroy()`
+     - Cookie cleared with `res.clearCookie('connect.sid')`
+     - Frontend: Logout button calls API before navigation
+   - **Security Settings**:
+     - httpOnly: true (prevents XSS)
+     - sameSite: 'lax' (prevents CSRF)
+     - secure: true in production (HTTPS only)
+   - **Result**: Users MUST re-login after closing browser
+   - **Architect Review**: Passed, meets security requirements
+
+2. **✅ Registration System Overhaul - Role Hierarchy Validation**:
    - **Removed Real Name Field**: Registration now only requires nickname (花名) as the display name
    - **Username Format Validation**: 
      - Frontend and backend enforce alphanumeric-only usernames (拼音+数字)
