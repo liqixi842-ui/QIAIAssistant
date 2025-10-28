@@ -43,12 +43,20 @@ function parseWhatsAppChat(chatText: string): Array<{
   // 支持多种WhatsApp导出格式：
   // [26/10/25 06:41:30] Lisa: 你在干嘛
   // [26/10/25 06:41:30] --清錢-马超: 消息内容
-  const lines = chatText.split('\n');
+  // 统一处理不同的换行符格式（\r\n, \n, \r）
+  const lines = chatText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
   let currentMessage: { timestamp: string; sender: string; message: string } | null = null;
 
   for (const line of lines) {
+    const trimmedLine = line.trim();
+    
+    // 跳过空行
+    if (!trimmedLine) {
+      continue;
+    }
+    
     // 匹配格式: [DD/MM/YY HH:MM:SS] 发送者: 消息
-    const match = line.match(/^\[(\d{2}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2})\]\s+([^:]+):\s*(.*)$/);
+    const match = trimmedLine.match(/^\[(\d{2}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2})\]\s+([^:]+):\s*(.*)$/);
     
     if (match) {
       // 如果有当前消息，先保存
@@ -60,8 +68,7 @@ function parseWhatsAppChat(chatText: string): Array<{
       
       // 过滤系统消息和附件消息
       if (message.includes('<附件：') || 
-          message.includes('消息和通话已进行端到端加密') ||
-          message.trim() === '') {
+          message.includes('消息和通话已进行端到端加密')) {
         currentMessage = null;
         continue;
       }
@@ -71,9 +78,9 @@ function parseWhatsAppChat(chatText: string): Array<{
         sender: sender.trim(),
         message: message.trim()
       };
-    } else if (currentMessage && line.trim()) {
+    } else if (currentMessage && trimmedLine) {
       // 多行消息的续行
-      currentMessage.message += '\n' + line.trim();
+      currentMessage.message += '\n' + trimmedLine;
     }
   }
 

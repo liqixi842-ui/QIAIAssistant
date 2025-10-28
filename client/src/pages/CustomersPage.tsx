@@ -1203,19 +1203,20 @@ export default function CustomersPage() {
                   
                   <div className="border rounded-lg p-4 h-96 overflow-y-auto space-y-3">
                     {selectedCustomer?.conversations && selectedCustomer.conversations.length > 0 ? (
-                      selectedCustomer.conversations.map((msg) => (
+                      selectedCustomer.conversations.map((msg, index) => (
                         <div
-                          key={msg.id}
-                          className={`flex ${msg.sender === 'agent' ? 'justify-end' : 'justify-start'}`}
+                          key={`${msg.timestamp}-${index}`}
+                          className={`flex ${msg.role === 'agent' ? 'justify-end' : 'justify-start'}`}
                         >
                           <div
                             className={`max-w-[70%] rounded-lg p-3 ${
-                              msg.sender === 'agent'
+                              msg.role === 'agent'
                                 ? 'bg-primary text-primary-foreground'
                                 : 'bg-muted'
                             }`}
                           >
-                            <p className="text-sm">{msg.content}</p>
+                            <div className="text-xs font-semibold mb-1">{msg.sender}</div>
+                            <p className="text-sm whitespace-pre-wrap">{msg.message}</p>
                             <p className="text-xs opacity-70 mt-1">{msg.timestamp}</p>
                           </div>
                         </div>

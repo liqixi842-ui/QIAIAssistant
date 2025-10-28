@@ -196,6 +196,7 @@ export class PostgresStorage implements IStorage {
     if (updates.lastReplyAt !== undefined) updateData.lastReplyAt = updates.lastReplyAt;
     if (updates.conversationCount !== undefined) updateData.conversationCount = updates.conversationCount;
     if (updates.replyCount !== undefined) updateData.replyCount = updates.replyCount;
+    if (updates.conversations !== undefined) updateData.conversations = updates.conversations;
     
     const result = await db.update(customers)
       .set(updateData)
