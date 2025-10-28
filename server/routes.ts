@@ -2485,6 +2485,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============================================
+  // Dashboard 统计数据 API
+  // ============================================
+
+  /**
+   * GET /api/dashboard/stats
+   * 获取Dashboard统计数据（今日发送、回应率、转化率、活跃客户）
+   */
+  app.get("/api/dashboard/stats", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const currentUser = await storage.getUser(req.session.userId);
+      if (!currentUser) {
+        return res.status(401).json({ error: "用户不存在" });
+      }
+
+      const stats = await storage.getDashboardStats(currentUser.id, currentUser.role);
+      res.json({ success: true, data: stats });
+    } catch (error: any) {
+      console.error('获取Dashboard统计数据失败:', error);
+      res.status(500).json({ error: "获取统计数据失败" });
+    }
+  });
+
+  /**
+   * GET /api/dashboard/today-tasks
+   * 获取今日任务列表（包含客户信息）
+   */
+  app.get("/api/dashboard/today-tasks", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const todayTasks = await storage.getTodayTasks(req.session.userId);
+      res.json({ success: true, data: todayTasks });
+    } catch (error: any) {
+      console.error('获取今日任务失败:', error);
+      res.status(500).json({ error: "获取今日任务失败" });
+    }
+  });
+
+  // ============================================
   // 反馈投诉建议 API
   // ============================================
 

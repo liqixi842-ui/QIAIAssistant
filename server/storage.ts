@@ -70,6 +70,19 @@ export interface IStorage {
   updateFeedback(id: string, updates: Partial<InsertFeedback>): Promise<Feedback | undefined>;
   getAllFeedbacks(): Promise<Feedback[]>;
   getAuditLogs(filters?: { operatorId?: string; targetUserId?: string; action?: string; limit?: number }): Promise<AuditLog[]>;
+  
+  // Dashboard methods
+  getDashboardStats(userId: string, userRole: string): Promise<{
+    todaySends: number;
+    todaySendsChange: number;
+    responseRate: number;
+    responseRateChange: number;
+    conversionRate: number;
+    conversionRateChange: number;
+    activeCustomers: number;
+    activeCustomersChange: number;
+  }>;
+  getTodayTasks(userId: string): Promise<Array<Task & { customer?: Customer }>>;
 }
 
 export class PostgresStorage implements IStorage {
@@ -598,6 +611,185 @@ export class PostgresStorage implements IStorage {
 
   async getAllFeedbacks(): Promise<Feedback[]> {
     return await db.select().from(feedbacks).orderBy(desc(feedbacks.submittedAt));
+  }
+  
+  // Dashboard methods
+  async getDashboardStats(userId: string, userRole: string): Promise<{
+    todaySends: number;
+    todaySendsChange: number;
+    responseRate: number;
+    responseRateChange: number;
+    conversionRate: number;
+    conversionRateChange: number;
+    activeCustomers: number;
+    activeCustomersChange: number;
+  }> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStr = today.toISOString();
+    
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString();
+    
+    const sevenDaysAgo = new Date(today);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const sevenDaysAgoStr = sevenDaysAgo.toISOString();
+    
+    const fourteenDaysAgo = new Date(today);
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+    const fourteenDaysAgoStr = fourteenDaysAgo.toISOString();
+    
+    const thirtyDaysAgo = new Date(today);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString();
+    
+    const sixtyDaysAgo = new Date(today);
+    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+    const sixtyDaysAgoStr = sixtyDaysAgo.toISOString();
+    
+    // 获取当前用户可见的客户列表（加入权限过滤）
+    let allCustomers: Customer[];
+    if (userRole === '业务') {
+      // 业务员只能看自己的客户
+      allCustomers = await db.select().from(customers).where(eq(customers.createdBy, userId));
+    } else {
+      // 其他角色可以看所有客户（后续可按团队过滤）
+      allCustomers = await db.select().from(customers);
+    }
+    
+    // 今日发送：今天创建的任务数量
+    const todayTasksQuery = userRole === '业务'
+      ? db.select().from(tasks).where(and(
+          eq(tasks.assignedAgentId, userId),
+          sql`${tasks.createdAt} >= ${todayStr}`
+        ))
+      : db.select().from(tasks).where(sql`${tasks.createdAt} >= ${todayStr}`);
+    const todayTasks = await todayTasksQuery;
+    const todaySends = todayTasks.length;
+    
+    // 昨日发送（用于计算变化百分比）
+    const yesterdayTasksQuery = userRole === '业务'
+      ? db.select().from(tasks).where(and(
+          eq(tasks.assignedAgentId, userId),
+          sql`${tasks.createdAt} >= ${yesterdayStr}`,
+          sql`${tasks.createdAt} < ${todayStr}`
+        ))
+      : db.select().from(tasks).where(and(
+          sql`${tasks.createdAt} >= ${yesterdayStr}`,
+          sql`${tasks.createdAt} < ${todayStr}`
+        ));
+    const yesterdayTasks = await yesterdayTasksQuery;
+    const yesterdaySends = yesterdayTasks.length;
+    const todaySendsChange = yesterdaySends > 0 ? ((todaySends - yesterdaySends) / yesterdaySends) * 100 : 0;
+    
+    // 回应率：有回复记录的客户占比（当前）
+    const customersWithReplies = allCustomers.filter(c => (c.replyCount || 0) > 0).length;
+    const responseRate = allCustomers.length > 0 ? (customersWithReplies / allCustomers.length) * 100 : 0;
+    
+    // 回应率变化：对比过去30天活跃客户的回复率
+    const recentActiveCustomers = allCustomers.filter(c => {
+      if (!c.lastReplyAt) return false;
+      const lastReply = new Date(c.lastReplyAt);
+      return lastReply >= thirtyDaysAgo;
+    });
+    const oldActiveCustomers = allCustomers.filter(c => {
+      if (!c.lastReplyAt) return false;
+      const lastReply = new Date(c.lastReplyAt);
+      return lastReply >= sixtyDaysAgo && lastReply < thirtyDaysAgo;
+    });
+    const recentResponseRate = recentActiveCustomers.length > 0 
+      ? (recentActiveCustomers.filter(c => (c.replyCount || 0) > 0).length / recentActiveCustomers.length) * 100 
+      : 0;
+    const oldResponseRate = oldActiveCustomers.length > 0 
+      ? (oldActiveCustomers.filter(c => (c.replyCount || 0) > 0).length / oldActiveCustomers.length) * 100 
+      : 0;
+    const responseRateChange = oldResponseRate > 0 
+      ? ((recentResponseRate - oldResponseRate) / oldResponseRate) * 100 
+      : 0;
+    
+    // 转化率：阶段为非"初次接触"的客户占比（当前）
+    const convertedCustomers = allCustomers.filter(c => c.stage && c.stage !== '初次接触').length;
+    const conversionRate = allCustomers.length > 0 ? (convertedCustomers / allCustomers.length) * 100 : 0;
+    
+    // 转化率变化：对比最近30天有联系的客户 vs 30-60天前有联系的客户的转化情况
+    const recentContactCustomers = allCustomers.filter(c => {
+      if (!c.lastContact) return false;
+      const lastContact = new Date(c.lastContact);
+      return lastContact >= thirtyDaysAgo;
+    });
+    const oldContactCustomers = allCustomers.filter(c => {
+      if (!c.lastContact) return false;
+      const lastContact = new Date(c.lastContact);
+      return lastContact >= sixtyDaysAgo && lastContact < thirtyDaysAgo;
+    });
+    const recentConversionRate = recentContactCustomers.length > 0
+      ? (recentContactCustomers.filter(c => c.stage && c.stage !== '初次接触').length / recentContactCustomers.length) * 100
+      : 0;
+    const oldConversionRate = oldContactCustomers.length > 0
+      ? (oldContactCustomers.filter(c => c.stage && c.stage !== '初次接触').length / oldContactCustomers.length) * 100
+      : 0;
+    const conversionRateChange = oldConversionRate > 0
+      ? ((recentConversionRate - oldConversionRate) / oldConversionRate) * 100
+      : 0;
+    
+    // 活跃客户：最近7天有互动的客户数量
+    const activeCustomersRecent = allCustomers.filter(c => {
+      if (!c.lastReplyAt) return false;
+      const lastReply = new Date(c.lastReplyAt);
+      return lastReply >= sevenDaysAgo;
+    }).length;
+    
+    // 前7-14天活跃客户（用于计算变化）
+    const activeCustomersPrevious = allCustomers.filter(c => {
+      if (!c.lastReplyAt) return false;
+      const lastReply = new Date(c.lastReplyAt);
+      return lastReply >= fourteenDaysAgo && lastReply < sevenDaysAgo;
+    }).length;
+    
+    const activeCustomersChange = activeCustomersPrevious > 0 
+      ? ((activeCustomersRecent - activeCustomersPrevious) / activeCustomersPrevious) * 100 
+      : 0;
+    
+    return {
+      todaySends,
+      todaySendsChange: Number(todaySendsChange.toFixed(1)),
+      responseRate: Number(responseRate.toFixed(1)),
+      responseRateChange: Number(responseRateChange.toFixed(1)),
+      conversionRate: Number(conversionRate.toFixed(1)),
+      conversionRateChange: Number(conversionRateChange.toFixed(1)),
+      activeCustomers: activeCustomersRecent,
+      activeCustomersChange: Number(activeCustomersChange.toFixed(1)),
+    };
+  }
+  
+  async getTodayTasks(userId: string): Promise<Array<Task & { customer?: Customer }>> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStr = today.toISOString();
+    
+    // 获取今天创建或截止日期为今天的任务（只返回分配给当前用户的任务）
+    const todayTasks = await db.select()
+      .from(tasks)
+      .where(and(
+        eq(tasks.assignedAgentId, userId),
+        or(
+          sql`${tasks.createdAt} >= ${todayStr}`,
+          sql`${tasks.dueAt} >= ${todayStr} AND ${tasks.dueAt} < ${todayStr}::date + interval '1 day'`
+        )
+      ))
+      .limit(10)
+      .orderBy(tasks.status, desc(tasks.createdAt));
+    
+    // 为每个任务获取关联的客户信息
+    const tasksWithCustomers = await Promise.all(
+      todayTasks.map(async (task) => {
+        const customer = await this.getCustomer(task.customerId);
+        return { ...task, customer };
+      })
+    );
+    
+    return tasksWithCustomers;
   }
 }
 
