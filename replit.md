@@ -44,6 +44,15 @@ Preferred communication style: Simple, everyday language.
         - **主管 (Supervisor)**: Full access to all data across the organization.
         - **Implementation**: `getCustomersByUser()` and `getAuthorizedUserIds()` helper methods enforce hierarchy in Dashboard stats, Customer pages, and Reports pages; `/api/customers`, `/api/dashboard/stats`, `/api/reports`, and `/api/reports/summary-tables` endpoints correctly apply user context before filtering; team chat pages exempt from restrictions.
         - **Fix (Oct 28)**: Reports summary-tables endpoint now correctly passes `userId` and `userRole` to `getReportsData()`, ensuring supervisors can view all subordinate data.
+    - **WhatsApp Chat History Upload** (Oct 28):
+        - **Parser**: `parseWhatsAppChat()` function supports format `[DD/MM/YY HH:MM:SS] Sender: Message`, handles multi-line messages, filters system messages.
+        - **AI Role Detection**: `identifyRolesWithAI()` analyzes conversations to distinguish customer vs agent messages based on tone and content.
+        - **API**: `POST /api/customers/:id/upload-chat` receives chat text, parses it, identifies roles using AI, and stores in `conversations` JSONB field.
+        - **Frontend**: Upload button in Customer Details dialog (Conversation tab), modal with textarea for pasting chat history, displays imported conversations with role-based styling.
+    - **Knowledge Base Integration for AI Scripts** (Oct 28):
+        - **Knowledge Base API**: `GET /api/knowledge-base` aggregates all learning materials by category with titles and metadata for AI reference.
+        - **AI Script Enhancement**: `generateSalesScript()` function now queries knowledge base and includes material titles in prompt context, enabling AI to reference professional resources when generating sales recommendations.
+        - **Auto-Learning**: AI automatically incorporates available learning materials (grouped by category) into script generation, making recommendations more professional and data-backed.
 
 ## External Dependencies
 

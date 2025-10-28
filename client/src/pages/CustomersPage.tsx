@@ -53,6 +53,8 @@ interface Customer {
   group?: string;
   age?: string;
   location?: string;
+  language?: string;
+  country?: string;
   stockAge?: string;
   profitLoss?: string;
   stockSelection?: string;
@@ -64,7 +66,11 @@ interface Customer {
   groupPurpose?: string;
   other?: string;
   conversations?: ConversationMessage[];
+  conversationCount?: number;
+  replyCount?: number;
+  lastReplyAt?: string;
   aiAnalysis?: string;
+  recommendedScript?: string;
 }
 
 const allCustomerTags: CustomerTag[] = [
@@ -511,17 +517,17 @@ export default function CustomersPage() {
     mutationFn: async ({ id, chatText }: { id: string; chatText: string }) => {
       return await apiRequest('POST', `/api/customers/${id}/upload-chat`, { chatText });
     },
-    onSuccess: (response) => {
+    onSuccess: (response: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/customers'] });
       
       // 更新本地选中的客户
-      if (selectedCustomer && response.data) {
+      if (selectedCustomer && response?.data) {
         setSelectedCustomer(response.data);
       }
       
       toast({
         title: "上传成功",
-        description: response.message || "聊天记录已成功导入",
+        description: response?.message || "聊天记录已成功导入",
       });
       
       // 关闭对话框并清空输入
