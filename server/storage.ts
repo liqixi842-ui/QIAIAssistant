@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type Customer, type InsertCustomer, type Task, type InsertTask, type ChatMessage, type InsertChatMessage, type Chat, type InsertChat, type ChatParticipant, type InsertChatParticipant, type LearningMaterial, type InsertLearningMaterial, type AuditLog, type InsertAuditLog, type Feedback, type InsertFeedback, users, customers, tasks, chatMessages, chats, chatParticipants, learningMaterials, auditLogs, feedbacks } from "@shared/schema";
+import { type User, type InsertUser, type Customer, type InsertCustomer, type Task, type InsertTask, type ChatMessage, type InsertChatMessage, type Chat, type InsertChat, type ChatParticipant, type InsertChatParticipant, type LearningMaterial, type InsertLearningMaterial, type ScriptCategory, type InsertScriptCategory, type AuditLog, type InsertAuditLog, type Feedback, type InsertFeedback, users, customers, tasks, chatMessages, chats, chatParticipants, learningMaterials, scriptCategories, auditLogs, feedbacks } from "@shared/schema";
 import { db } from "./db";
 import { eq, inArray, or, sql, desc, and, like, ilike } from "drizzle-orm";
 
@@ -64,6 +64,13 @@ export interface IStorage {
   createLearningMaterial(material: InsertLearningMaterial): Promise<LearningMaterial>;
   deleteLearningMaterial(id: string): Promise<boolean>;
   getAllLearningMaterials(): Promise<LearningMaterial[]>;
+  
+  // Script category methods
+  getScriptCategory(id: string): Promise<ScriptCategory | undefined>;
+  createScriptCategory(category: InsertScriptCategory): Promise<ScriptCategory>;
+  updateScriptCategory(id: string, updates: Partial<InsertScriptCategory>): Promise<ScriptCategory | undefined>;
+  deleteScriptCategory(id: string): Promise<boolean>;
+  getAllScriptCategories(): Promise<ScriptCategory[]>;
   
   // Audit log methods
   createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
@@ -604,6 +611,31 @@ export class PostgresStorage implements IStorage {
   
   async getAllLearningMaterials(): Promise<LearningMaterial[]> {
     return await db.select().from(learningMaterials).orderBy(desc(learningMaterials.uploadDate));
+  }
+  
+  // Script category methods
+  async getScriptCategory(id: string): Promise<ScriptCategory | undefined> {
+    const result = await db.select().from(scriptCategories).where(eq(scriptCategories.id, id)).limit(1);
+    return result[0];
+  }
+  
+  async createScriptCategory(category: InsertScriptCategory): Promise<ScriptCategory> {
+    const result = await db.insert(scriptCategories).values(category).returning();
+    return result[0];
+  }
+  
+  async updateScriptCategory(id: string, updates: Partial<InsertScriptCategory>): Promise<ScriptCategory | undefined> {
+    const result = await db.update(scriptCategories).set(updates).where(eq(scriptCategories.id, id)).returning();
+    return result[0];
+  }
+  
+  async deleteScriptCategory(id: string): Promise<boolean> {
+    const result = await db.delete(scriptCategories).where(eq(scriptCategories.id, id)).returning();
+    return result.length > 0;
+  }
+  
+  async getAllScriptCategories(): Promise<ScriptCategory[]> {
+    return await db.select().from(scriptCategories).orderBy(scriptCategories.createdAt);
   }
   
   // Audit log methods

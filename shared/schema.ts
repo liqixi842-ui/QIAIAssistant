@@ -142,6 +142,23 @@ export const insertLearningMaterialSchema = createInsertSchema(learningMaterials
 export type InsertLearningMaterial = z.infer<typeof insertLearningMaterialSchema>;
 export type LearningMaterial = typeof learningMaterials.$inferSelect;
 
+// 学习资料分类表
+export const scriptCategories = pgTable("script_categories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(), // 分类名称
+  parentId: varchar("parent_id"), // 父分类ID（null表示顶级分类）
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`), // 创建时间
+  createdBy: varchar("created_by"), // 创建者ID
+});
+
+export const insertScriptCategorySchema = createInsertSchema(scriptCategories).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertScriptCategory = z.infer<typeof insertScriptCategorySchema>;
+export type ScriptCategory = typeof scriptCategories.$inferSelect;
+
 // 聊天室表
 export const chats = pgTable("chats", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

@@ -150,12 +150,7 @@ export default function ScriptsPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   
   // 学习资料状态
-  const [categories, setCategories] = useState<Category[]>([
-    { id: 'cat-1', name: '产品知识', parentId: null, isExpanded: true },
-    { id: 'cat-2', name: '销售技巧', parentId: null, isExpanded: true },
-    { id: 'cat-3', name: '合规培训', parentId: null, isExpanded: true },
-    { id: 'cat-4', name: '市场分析', parentId: null, isExpanded: true }
-  ]);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [selectedMaterial, setSelectedMaterial] = useState<LearningMaterial | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -176,7 +171,16 @@ export default function ScriptsPage() {
     queryKey: ['/api/learning-materials'],
   });
 
+  // 获取分类列表
+  const { data: categoriesData, isLoading: isLoadingCategories } = useQuery<{ success: boolean; data: any[] }>({
+    queryKey: ['/api/script-categories'],
+  });
+
   const learningMaterials = materialsData?.data || [];
+  const categories = (categoriesData?.data || []).map(cat => ({
+    ...cat,
+    isExpanded: expandedCategories.has(cat.id)
+  }));
 
   // 创建学习资料记录
   const createMaterialMutation = useMutation({
@@ -213,6 +217,51 @@ export default function ScriptsPage() {
       toast({
         title: "已删除",
         description: "学习资料已删除",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "删除失败",
+        description: error.message || "请重试",
+        variant: "destructive",
+      });
+    }
+  });
+
+  // 创建分类
+  const createCategoryMutation = useMutation({
+    mutationFn: async (data: { name: string; parentId: string | null }) => {
+      return await apiRequest('POST', '/api/script-categories', data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/script-categories'] });
+      toast({
+        title: "创建成功",
+        description: "分类已创建",
+      });
+      setIsAddCategoryOpen(false);
+      setNewCategoryName('');
+      setNewCategoryParentId(null);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "创建失败",
+        description: error.message || "请重试",
+        variant: "destructive",
+      });
+    }
+  });
+
+  // 删除分类
+  const deleteCategoryMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return await apiRequest('DELETE', `/api/script-categories/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/script-categories'] });
+      toast({
+        title: "已删除",
+        description: "分类已删除",
       });
     },
     onError: (error: any) => {
@@ -272,11 +321,32 @@ export default function ScriptsPage() {
 
   // 切换分类展开/折叠
   const toggleCategory = (categoryId: string) => {
-    setCategories(prev => 
-      prev.map(cat => 
-        cat.id === categoryId ? { ...cat, isExpanded: !cat.isExpanded } : cat
-      )
-    );
+    setExpandedCategories(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(categoryId)) {
+        newSet.delete(categoryId);
+      } else {
+        newSet.add(categoryId);
+      }
+      return newSet;
+    });
+  };
+
+  // 添加分类
+  const handleAddCategory = () => {
+    if (!newCategoryName.trim()) {
+      toast({
+        title: "错误",
+        description: "分类名称不能为空",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    createCategoryMutation.mutate({
+      name: newCategoryName.trim(),
+      parentId: newCategoryParentId
+    });
   };
 
   // 选择分类
@@ -356,66 +426,9 @@ export default function ScriptsPage() {
     deleteMaterialMutation.mutate(materialId);
   };
 
-  // 添加分类
-  const handleAddCategory = () => {
-    if (!newCategoryName.trim()) {
-      toast({
-        title: "分类名称不能为空",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const newCategory: Category = {
-      id: `cat-${Date.now()}`,
-      name: newCategoryName,
-      parentId: newCategoryParentId,
-      isExpanded: true
-    };
-
-    setCategories(prev => [...prev, newCategory]);
-    setNewCategoryName('');
-    setNewCategoryParentId(null);
-    
-    toast({
-      title: "添加成功",
-      description: `已添加分类"${newCategoryName}"`,
-    });
-    
-    setIsAddCategoryOpen(false);
-  };
-
   // 删除分类
   const handleDeleteCategory = (categoryId: string) => {
-    const materialsInCategory = getMaterialsInCategory(categoryId);
-    if (materialsInCategory.length > 0) {
-      toast({
-        title: "无法删除",
-        description: `该分类及其子分类下还有 ${materialsInCategory.length} 个资料`,
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const children = getChildCategories(categoryId);
-    if (children.length > 0) {
-      toast({
-        title: "无法删除",
-        description: "请先删除该分类下的所有子分类",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setCategories(prev => prev.filter(c => c.id !== categoryId));
-    if (selectedCategoryId === categoryId) {
-      setSelectedCategoryId(null);
-    }
-    
-    toast({
-      title: "已删除",
-      description: "分类已删除",
-    });
+    deleteCategoryMutation.mutate(categoryId);
   };
 
   const formatFileSize = (bytes: number): string => {

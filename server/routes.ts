@@ -2504,6 +2504,123 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============================================
+  // 学习资料分类管理 API
+  // ============================================
+  
+  /**
+   * GET /api/script-categories
+   * 获取所有学习资料分类
+   */
+  app.get("/api/script-categories", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const categories = await storage.getAllScriptCategories();
+      res.json({ success: true, data: categories });
+    } catch (error: any) {
+      console.error('获取分类列表失败:', error);
+      res.status(500).json({ error: "获取分类列表失败" });
+    }
+  });
+
+  /**
+   * POST /api/script-categories
+   * 创建新分类
+   */
+  app.post("/api/script-categories", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const { name, parentId } = req.body;
+      
+      if (!name) {
+        return res.status(400).json({ error: "分类名称不能为空" });
+      }
+
+      const category = await storage.createScriptCategory({
+        name,
+        parentId: parentId || null,
+        createdBy: req.session.userId
+      });
+      
+      res.json({ success: true, data: category });
+    } catch (error: any) {
+      console.error('创建分类失败:', error);
+      res.status(500).json({ error: "创建分类失败", details: error.message });
+    }
+  });
+
+  /**
+   * PATCH /api/script-categories/:id
+   * 更新分类
+   */
+  app.patch("/api/script-categories/:id", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const { id } = req.params;
+      const { name, parentId } = req.body;
+      
+      const updates: any = {};
+      if (name !== undefined) updates.name = name;
+      if (parentId !== undefined) updates.parentId = parentId;
+
+      const category = await storage.updateScriptCategory(id, updates);
+      
+      if (!category) {
+        return res.status(404).json({ error: "分类不存在" });
+      }
+      
+      res.json({ success: true, data: category });
+    } catch (error: any) {
+      console.error('更新分类失败:', error);
+      res.status(500).json({ error: "更新分类失败", details: error.message });
+    }
+  });
+
+  /**
+   * DELETE /api/script-categories/:id
+   * 删除分类
+   */
+  app.delete("/api/script-categories/:id", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const { id } = req.params;
+      
+      // 检查是否有子分类
+      const allCategories = await storage.getAllScriptCategories();
+      const hasChildren = allCategories.some(cat => cat.parentId === id);
+      
+      if (hasChildren) {
+        return res.status(400).json({ error: "该分类下还有子分类，无法删除" });
+      }
+      
+      // 检查是否有关联的学习资料
+      const materials = await storage.getAllLearningMaterials();
+      const hasmat = materials.some(mat => mat.categoryId === id);
+      
+      if (hasmat) {
+        return res.status(400).json({ error: "该分类下还有学习资料，无法删除" });
+      }
+      
+      await storage.deleteScriptCategory(id);
+      res.json({ success: true, message: "删除成功" });
+    } catch (error: any) {
+      console.error('删除分类失败:', error);
+      res.status(500).json({ error: "删除分类失败", details: error.message });
+    }
+  });
+
+  // ============================================
   // Dashboard 统计数据 API
   // ============================================
 
