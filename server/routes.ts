@@ -85,7 +85,7 @@ function parseWhatsAppChat(chatText: string): Array<{
   return conversations;
 }
 
-// 使用AI识别对话中的客服和客户角色
+// 使用AI识别对话中的客服和客户角色（带schema验证防止prompt injection）
 async function identifyRolesWithAI(
   conversations: Array<{ timestamp: string; sender: string; message: string }>,
   customerName: string
@@ -161,8 +161,44 @@ ${sampleMessages}
     const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const roleMapping = JSON.parse(jsonMatch[0]);
-      const agents = new Set(roleMapping['客服'] || []);
       
+      // 严格验证AI响应schema，防止prompt injection
+      if (!roleMapping || typeof roleMapping !== 'object') {
+        console.warn('AI返回格式无效，使用默认策略');
+        const agentName = senders[0];
+        return conversations.map(c => ({
+          ...c,
+          role: c.sender === agentName ? 'agent' as const : 'customer' as const
+        }));
+      }
+      
+      const agentList = roleMapping['客服'];
+      const customerList = roleMapping['客户'];
+      
+      // 验证返回的名单是否为数组
+      if (!Array.isArray(agentList) || !Array.isArray(customerList)) {
+        console.warn('AI返回的角色列表格式无效，使用默认策略');
+        const agentName = senders[0];
+        return conversations.map(c => ({
+          ...c,
+          role: c.sender === agentName ? 'agent' as const : 'customer' as const
+        }));
+      }
+      
+      // 验证所有返回的名字都在实际参与者列表中（防止injection）
+      const allMentioned = [...agentList, ...customerList];
+      const invalidNames = allMentioned.filter(name => !senders.includes(name));
+      if (invalidNames.length > 0) {
+        console.warn('AI返回了不存在的参与者名字，可能存在prompt injection，使用默认策略');
+        const agentName = senders[0];
+        return conversations.map(c => ({
+          ...c,
+          role: c.sender === agentName ? 'agent' as const : 'customer' as const
+        }));
+      }
+      
+      // 验证通过，应用AI识别的角色
+      const agents = new Set(agentList);
       return conversations.map(c => ({
         ...c,
         role: agents.has(c.sender) ? 'agent' as const : 'customer' as const
