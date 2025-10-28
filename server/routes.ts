@@ -1580,16 +1580,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
    */
   app.get("/api/reports", requireAuth, async (req, res) => {
     try {
+      const currentUser = getCurrentUser(req);
+      if (!currentUser) {
+        return res.status(401).json({ error: "未登录" });
+      }
+
       const { channel, createdBy, team, dateStart, dateEnd } = req.query;
 
-      // 获取筛选后的客户数据
-      const customers = await storage.getReportsData({
-        channel: channel as string,
-        createdBy: createdBy as string,
-        team: team as string,
-        dateStart: dateStart as string,
-        dateEnd: dateEnd as string
-      });
+      // 获取筛选后的客户数据（应用层级权限）
+      const customers = await storage.getReportsData(
+        currentUser.id,
+        currentUser.role,
+        {
+          channel: channel as string,
+          createdBy: createdBy as string,
+          team: team as string,
+          dateStart: dateStart as string,
+          dateEnd: dateEnd as string
+        }
+      );
 
       // 获取所有用户（用于关联业务员信息）
       const users = await storage.getAllUsers();

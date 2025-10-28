@@ -37,6 +37,12 @@ Preferred communication style: Simple, everyday language.
         - **Read Status**: `PATCH /api/chats/:chatId/read` API with `markChatAsRead()` storage method tracks unread messages accurately.
         - **Direct Chat Naming**: Private chats automatically named with counterpart's nickname (resolves "未命名通话" issue).
         - **Reliable Delivery**: Messages persist even when recipient is offline, visible upon their next login.
+    - **Hierarchical Permission System**: Complete role-based data access control across all modules (except team chat which remains accessible to all users):
+        - **业务 (Salesperson)**: Access only to own customers, tasks, and dashboard statistics.
+        - **经理 (Manager)**: Access to own data + direct subordinates' data.
+        - **总监 (Director)**: Access to own data + managers' data + managers' subordinates' data (2-level hierarchy).
+        - **主管 (Supervisor)**: Full access to all data across the organization.
+        - **Implementation**: `getCustomersByUser()` and `getAuthorizedUserIds()` helper methods enforce hierarchy in Dashboard stats, Customer pages, and Reports pages; `/api/customers`, `/api/dashboard/stats`, and `/api/reports` endpoints apply user context before filtering; team chat pages exempt from restrictions.
 
 ## External Dependencies
 

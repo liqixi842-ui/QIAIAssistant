@@ -26,13 +26,17 @@ export interface IStorage {
   getTasksByUser(userId: string): Promise<Task[]>;
   
   // Reports methods
-  getReportsData(filters: {
-    channel?: string;
-    createdBy?: string;
-    team?: string;
-    dateStart?: string;
-    dateEnd?: string;
-  }): Promise<Customer[]>;
+  getReportsData(
+    userId: string,
+    userRole: string,
+    filters: {
+      channel?: string;
+      createdBy?: string;
+      team?: string;
+      dateStart?: string;
+      dateEnd?: string;
+    }
+  ): Promise<Customer[]>;
   
   // Chat message methods
   createChatMessage(message: InsertChatMessage): Promise<ChatMessage>;
@@ -252,7 +256,44 @@ export class PostgresStorage implements IStorage {
       return await db.select().from(customers).where(inArray(customers.createdBy, allCreatorIds));
     }
 
-    // 后勤角色不应该看到任何客户
+      // 后勤角色不应该看到任何客户
+    return [];
+  }
+
+  // 获取用户有权限查看的所有用户ID列表（包括自己和所有下属）
+  private async getAuthorizedUserIds(userId: string, userRole: string): Promise<string[]> {
+    // 主管可以看所有用户
+    if (userRole === "主管") {
+      const allUsers = await this.getAllUsers();
+      return allUsers.map(u => u.id);
+    }
+
+    // 业务只能看自己
+    if (userRole === "业务") {
+      return [userId];
+    }
+
+    // 经理可以看自己 + 直接下属
+    if (userRole === "经理") {
+      const subordinates = await db.select().from(users).where(eq(users.supervisorId, userId));
+      return [userId, ...subordinates.map(u => u.id)];
+    }
+
+    // 总监可以看自己 + 经理 + 经理的下属
+    if (userRole === "总监") {
+      const managers = await db.select().from(users).where(eq(users.supervisorId, userId));
+      const managerIds = managers.map(m => m.id);
+      
+      let allSubordinateIds: string[] = [];
+      if (managerIds.length > 0) {
+        const staff = await db.select().from(users).where(inArray(users.supervisorId, managerIds));
+        allSubordinateIds = staff.map(s => s.id);
+      }
+      
+      return [userId, ...managerIds, ...allSubordinateIds].filter(id => id);
+    }
+
+    // 后勤角色
     return [];
   }
 
@@ -289,24 +330,31 @@ export class PostgresStorage implements IStorage {
     );
   }
 
-  async getReportsData(filters: {
-    channel?: string;
-    createdBy?: string;
-    team?: string;
-    dateStart?: string;
-    dateEnd?: string;
-  }): Promise<Customer[]> {
-    let query = db.select().from(customers);
-    const conditions = [];
+  async getReportsData(
+    userId: string,
+    userRole: string,
+    filters: {
+      channel?: string;
+      createdBy?: string;
+      team?: string;
+      dateStart?: string;
+      dateEnd?: string;
+    }
+  ): Promise<Customer[]> {
+    // 首先应用层级权限，获取用户有权限查看的所有客户
+    let baseCustomers = await this.getCustomersByUser(userId, userRole);
+    
+    // 然后应用额外的筛选条件
+    let filteredCustomers = baseCustomers;
 
     // 筛选条件：进线渠道
     if (filters.channel && filters.channel !== '全部') {
-      conditions.push(eq(customers.channel, filters.channel));
+      filteredCustomers = filteredCustomers.filter(c => c.channel === filters.channel);
     }
 
     // 筛选条件：业务（创建者）
     if (filters.createdBy && filters.createdBy !== '全部') {
-      conditions.push(eq(customers.createdBy, filters.createdBy));
+      filteredCustomers = filteredCustomers.filter(c => c.createdBy === filters.createdBy);
     }
 
     // 筛选条件：团队（需要通过createdBy关联users表查询）
@@ -315,7 +363,7 @@ export class PostgresStorage implements IStorage {
       const teamUsers = await db.select().from(users).where(eq(users.team, filters.team));
       const teamUserIds = teamUsers.map(u => u.id);
       if (teamUserIds.length > 0) {
-        conditions.push(inArray(customers.createdBy, teamUserIds));
+        filteredCustomers = filteredCustomers.filter(c => c.createdBy && teamUserIds.includes(c.createdBy));
       } else {
         // 如果团队没有用户，返回空数组
         return [];
@@ -324,20 +372,13 @@ export class PostgresStorage implements IStorage {
 
     // 筛选条件：日期范围
     if (filters.dateStart) {
-      conditions.push(sql`${customers.date} >= ${filters.dateStart}`);
+      filteredCustomers = filteredCustomers.filter(c => c.date && c.date >= filters.dateStart!);
     }
     if (filters.dateEnd) {
-      conditions.push(sql`${customers.date} <= ${filters.dateEnd}`);
+      filteredCustomers = filteredCustomers.filter(c => c.date && c.date <= filters.dateEnd!);
     }
 
-    // 应用所有筛选条件
-    if (conditions.length > 0) {
-      return await query.where(sql`${conditions.reduce((acc, condition, i) => 
-        i === 0 ? condition : sql`${acc} AND ${condition}`
-      )}`);
-    }
-
-    return await query;
+    return filteredCustomers;
   }
   
   async createChatMessage(insertMessage: InsertChatMessage): Promise<ChatMessage> {
@@ -648,38 +689,29 @@ export class PostgresStorage implements IStorage {
     sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
     const sixtyDaysAgoStr = sixtyDaysAgo.toISOString();
     
-    // 获取当前用户可见的客户列表（加入权限过滤）
-    let allCustomers: Customer[];
-    if (userRole === '业务') {
-      // 业务员只能看自己的客户
-      allCustomers = await db.select().from(customers).where(eq(customers.createdBy, userId));
-    } else {
-      // 其他角色可以看所有客户（后续可按团队过滤）
-      allCustomers = await db.select().from(customers);
-    }
+    // 获取当前用户可见的客户列表（使用层级权限过滤）
+    const allCustomers = await this.getCustomersByUser(userId, userRole);
     
-    // 今日发送：今天创建的任务数量
-    const todayTasksQuery = userRole === '业务'
-      ? db.select().from(tasks).where(and(
-          eq(tasks.assignedAgentId, userId),
+    // 获取当前用户有权限查看的用户ID列表（用于任务统计）
+    const authorizedUserIds = await this.getAuthorizedUserIds(userId, userRole);
+    
+    // 今日发送：今天创建的任务数量（只统计授权用户的任务）
+    const todayTasks = authorizedUserIds.length > 0
+      ? await db.select().from(tasks).where(and(
+          inArray(tasks.assignedAgentId, authorizedUserIds.filter(id => id !== null) as string[]),
           sql`${tasks.createdAt} >= ${todayStr}`
         ))
-      : db.select().from(tasks).where(sql`${tasks.createdAt} >= ${todayStr}`);
-    const todayTasks = await todayTasksQuery;
+      : [];
     const todaySends = todayTasks.length;
     
     // 昨日发送（用于计算变化百分比）
-    const yesterdayTasksQuery = userRole === '业务'
-      ? db.select().from(tasks).where(and(
-          eq(tasks.assignedAgentId, userId),
+    const yesterdayTasks = authorizedUserIds.length > 0
+      ? await db.select().from(tasks).where(and(
+          inArray(tasks.assignedAgentId, authorizedUserIds.filter(id => id !== null) as string[]),
           sql`${tasks.createdAt} >= ${yesterdayStr}`,
           sql`${tasks.createdAt} < ${todayStr}`
         ))
-      : db.select().from(tasks).where(and(
-          sql`${tasks.createdAt} >= ${yesterdayStr}`,
-          sql`${tasks.createdAt} < ${todayStr}`
-        ));
-    const yesterdayTasks = await yesterdayTasksQuery;
+      : [];
     const yesterdaySends = yesterdayTasks.length;
     const todaySendsChange = yesterdaySends > 0 ? ((todaySends - yesterdaySends) / yesterdaySends) * 100 : 0;
     
