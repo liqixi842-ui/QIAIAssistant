@@ -42,7 +42,8 @@ Preferred communication style: Simple, everyday language.
         - **经理 (Manager)**: Access to own data + direct subordinates' data.
         - **总监 (Director)**: Access to own data + managers' data + managers' subordinates' data (2-level hierarchy).
         - **主管 (Supervisor)**: Full access to all data across the organization.
-        - **Implementation**: `getCustomersByUser()` and `getAuthorizedUserIds()` helper methods enforce hierarchy in Dashboard stats, Customer pages, and Reports pages; `/api/customers`, `/api/dashboard/stats`, and `/api/reports` endpoints apply user context before filtering; team chat pages exempt from restrictions.
+        - **Implementation**: `getCustomersByUser()` and `getAuthorizedUserIds()` helper methods enforce hierarchy in Dashboard stats, Customer pages, and Reports pages; `/api/customers`, `/api/dashboard/stats`, `/api/reports`, and `/api/reports/summary-tables` endpoints correctly apply user context before filtering; team chat pages exempt from restrictions.
+        - **Fix (Oct 28)**: Reports summary-tables endpoint now correctly passes `userId` and `userRole` to `getReportsData()`, ensuring supervisors can view all subordinate data.
 
 ## External Dependencies
 
