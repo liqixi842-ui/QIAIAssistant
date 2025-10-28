@@ -1701,18 +1701,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "用户未登录" });
       }
 
-      // 权限过滤：业务员只能看自己的数据
-      const filters: any = {
+      // 构建筛选条件
+      const filters = {
         dateStart: dateStart as string,
         dateEnd: dateEnd as string
       };
-      
-      if (user.role === '业务') {
-        filters.createdBy = userId;
-      }
 
-      // 获取筛选后的客户数据
-      const customers = await storage.getReportsData(filters);
+      // 获取筛选后的客户数据（自动应用层级权限）
+      const customers = await storage.getReportsData(userId, user.role, filters);
 
       // 获取所有用户（用于关联业务员信息）
       const users = await storage.getAllUsers();
