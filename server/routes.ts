@@ -1293,7 +1293,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "数据验证失败", details: errors });
       }
 
-      const customer = await storage.updateCustomer(id, validation.data);
+      // 过滤掉undefined值，避免Drizzle "No values to set"错误
+      const updateData = Object.fromEntries(
+        Object.entries(validation.data).filter(([_, v]) => v !== undefined)
+      );
+
+      // 如果没有要更新的字段，直接返回当前客户
+      if (Object.keys(updateData).length === 0) {
+        const existingCustomer = await storage.getCustomer(id);
+        if (!existingCustomer) {
+          return res.status(404).json({ error: "客户不存在" });
+        }
+        return res.json({ success: true, data: existingCustomer, message: "无需更新" });
+      }
+
+      const customer = await storage.updateCustomer(id, updateData);
       
       if (!customer) {
         return res.status(404).json({ error: "客户不存在" });
