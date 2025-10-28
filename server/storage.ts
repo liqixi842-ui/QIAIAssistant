@@ -798,7 +798,11 @@ export class PostgresStorage implements IStorage {
   async getTodayTasks(userId: string): Promise<Array<Task & { customer?: Customer }>> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const todayStr = today.toISOString();
+    const todayStart = today.toISOString();
+    
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStart = tomorrow.toISOString();
     
     // 获取今天创建或截止日期为今天的任务（只返回分配给当前用户的任务）
     const todayTasks = await db.select()
@@ -806,8 +810,8 @@ export class PostgresStorage implements IStorage {
       .where(and(
         eq(tasks.assignedAgentId, userId),
         or(
-          sql`${tasks.createdAt} >= ${todayStr}`,
-          sql`${tasks.dueAt} >= ${todayStr} AND ${tasks.dueAt} < ${todayStr}::date + interval '1 day'`
+          sql`${tasks.createdAt} >= ${todayStart}`,
+          sql`${tasks.dueAt} >= ${todayStart} AND ${tasks.dueAt} < ${tomorrowStart}`
         )
       ))
       .limit(10)
