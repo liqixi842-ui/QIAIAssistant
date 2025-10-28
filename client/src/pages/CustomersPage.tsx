@@ -206,6 +206,8 @@ export default function CustomersPage() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<string>('all'); // 筛选用户ID
+  const [isUploadChatOpen, setIsUploadChatOpen] = useState(false);
+  const [chatText, setChatText] = useState('');
   
   // 保存队列：确保请求按顺序执行
   const saveQueueRef = useRef<Promise<any>>(Promise.resolve());
@@ -503,6 +505,53 @@ export default function CustomersPage() {
       });
     }
   });
+
+  // 上传聊天记录
+  const uploadChatMutation = useMutation({
+    mutationFn: async ({ id, chatText }: { id: string; chatText: string }) => {
+      return await apiRequest('POST', `/api/customers/${id}/upload-chat`, { chatText });
+    },
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/customers'] });
+      
+      // 更新本地选中的客户
+      if (selectedCustomer && response.data) {
+        setSelectedCustomer(response.data);
+      }
+      
+      toast({
+        title: "上传成功",
+        description: response.message || "聊天记录已成功导入",
+      });
+      
+      // 关闭对话框并清空输入
+      setIsUploadChatOpen(false);
+      setChatText('');
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "上传失败",
+        description: error.message || "请检查聊天记录格式",
+        variant: "destructive",
+      });
+    }
+  });
+
+  const handleUploadChat = () => {
+    if (!selectedCustomer || !chatText.trim()) {
+      toast({
+        title: "提示",
+        description: "请粘贴聊天记录内容",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    uploadChatMutation.mutate({
+      id: selectedCustomer.id,
+      chatText: chatText
+    });
+  };
 
   const handleAddCustomer = () => {
     if (!newCustomerPhone.trim() || newCustomerPhone.length !== 4) {
@@ -1085,6 +1134,67 @@ export default function CustomersPage() {
                 </TabsContent>
 
                 <TabsContent value="conversation" className="space-y-4 mt-4">
+                  <div className="flex justify-end mb-2">
+                    <Dialog open={isUploadChatOpen} onOpenChange={setIsUploadChatOpen}>
+                      <DialogTrigger asChild>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          disabled={!isOwner}
+                          data-testid="button-upload-chat"
+                        >
+                          <MessageSquare className="h-4 w-4 mr-2" />
+                          导入聊天记录
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="max-w-2xl">
+                        <DialogHeader>
+                          <DialogTitle>导入WhatsApp聊天记录</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                          <div className="bg-muted/50 p-3 rounded-lg text-sm">
+                            <p className="font-medium mb-2">支持的格式：</p>
+                            <code className="text-xs block bg-background p-2 rounded">
+                              [26/10/25 06:41:30] 姓名: 消息内容<br />
+                              [26/10/25 06:42:15] 另一个人: 回复内容
+                            </code>
+                          </div>
+                          
+                          <div>
+                            <Label>粘贴聊天记录</Label>
+                            <Textarea
+                              value={chatText}
+                              onChange={(e) => setChatText(e.target.value)}
+                              placeholder="粘贴完整的聊天记录..."
+                              className="h-64 font-mono text-xs"
+                              data-testid="textarea-chat-upload"
+                            />
+                          </div>
+                          
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              onClick={() => {
+                                setIsUploadChatOpen(false);
+                                setChatText('');
+                              }}
+                              data-testid="button-cancel-upload"
+                            >
+                              取消
+                            </Button>
+                            <Button
+                              onClick={handleUploadChat}
+                              disabled={uploadChatMutation.isPending || !chatText.trim()}
+                              data-testid="button-confirm-upload"
+                            >
+                              {uploadChatMutation.isPending ? '导入中...' : '导入'}
+                            </Button>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                  
                   <div className="border rounded-lg p-4 h-96 overflow-y-auto space-y-3">
                     {selectedCustomer?.conversations && selectedCustomer.conversations.length > 0 ? (
                       selectedCustomer.conversations.map((msg) => (
@@ -1105,7 +1215,7 @@ export default function CustomersPage() {
                         </div>
                       ))
                     ) : (
-                      <div className="flex items-center justify-center h-full text-muted-foreground">
+                      <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                         <MessageSquare className="h-12 w-12 mb-2" />
                         <p>暂无对话记录</p>
                       </div>
