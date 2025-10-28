@@ -67,6 +67,14 @@ export const customers = pgTable("customers", {
   
   // 封锁状态
   blocked: integer("blocked").default(0), // 0=正常 1=已封锁
+  
+  // 聊天记录
+  conversations: jsonb("conversations").$type<Array<{
+    timestamp: string;
+    sender: string;
+    role: 'agent' | 'customer'; // agent=客服, customer=客户
+    message: string;
+  }>>().default(sql`'[]'::jsonb`), // 聊天对话记录数组
 });
 
 export const insertCustomerSchema = createInsertSchema(customers).omit({

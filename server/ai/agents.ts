@@ -85,16 +85,50 @@ ${JSON.stringify(conversations, null, 2)}
 }
 
 /**
- * 3. 话术生成 AI
+ * 3. 话术生成 AI（结合知识库）
  */
 export async function generateSalesScript(customerProfile: any, stage: string) {
   try {
+    // 获取知识库信息
+    let knowledgeContext = '';
+    try {
+      const { storage } = await import('../storage');
+      const materials = await storage.getAllLearningMaterials();
+      const categories = await storage.getAllScriptCategories();
+      
+      if (materials.length > 0) {
+        const categoryMap = new Map(categories.map(c => [c.id, c.name]));
+        const byCategory: Record<string, string[]> = {};
+        
+        materials.forEach(m => {
+          const category = categoryMap.get(m.categoryId) || '未分类';
+          if (!byCategory[category]) {
+            byCategory[category] = [];
+          }
+          byCategory[category].push(m.title);
+        });
+        
+        knowledgeContext = '\n\n📚 可用的学习资料库：\n';
+        for (const [category, titles] of Object.entries(byCategory)) {
+          knowledgeContext += `\n【${category}】\n`;
+          titles.forEach(title => {
+            knowledgeContext += `  - ${title}\n`;
+          });
+        }
+        knowledgeContext += '\n💡 请在生成话术时，适当引用这些资料中的专业知识，使话术更加专业和具有说服力。';
+      }
+    } catch (error) {
+      console.error('获取知识库失败:', error);
+      // 即使获取知识库失败也继续生成话术
+    }
+
     const prompt = `请为以下客户生成销售话术：
 
 客户画像：
 ${JSON.stringify(customerProfile, null, 2)}
 
 当前阶段：${stage}
+${knowledgeContext}
 
 请严格按照JSON格式返回话术。`;
 

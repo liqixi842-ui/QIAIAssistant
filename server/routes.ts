@@ -28,6 +28,165 @@ import {
 import { aggregateByDimension, type GroupByDimension } from "./services/aggregation";
 import type { Request } from "express";
 
+// WhatsApp聊天记录解析器
+function parseWhatsAppChat(chatText: string): Array<{
+  timestamp: string;
+  sender: string;
+  message: string;
+}> {
+  const conversations: Array<{
+    timestamp: string;
+    sender: string;
+    message: string;
+  }> = [];
+
+  // 支持多种WhatsApp导出格式：
+  // [26/10/25 06:41:30] Lisa: 你在干嘛
+  // [26/10/25 06:41:30] --清錢-马超: 消息内容
+  const lines = chatText.split('\n');
+  let currentMessage: { timestamp: string; sender: string; message: string } | null = null;
+
+  for (const line of lines) {
+    // 匹配格式: [DD/MM/YY HH:MM:SS] 发送者: 消息
+    const match = line.match(/^\[(\d{2}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2})\]\s+([^:]+):\s*(.*)$/);
+    
+    if (match) {
+      // 如果有当前消息，先保存
+      if (currentMessage && currentMessage.message.trim()) {
+        conversations.push(currentMessage);
+      }
+
+      const [, timestamp, sender, message] = match;
+      
+      // 过滤系统消息和附件消息
+      if (message.includes('<附件：') || 
+          message.includes('消息和通话已进行端到端加密') ||
+          message.trim() === '') {
+        currentMessage = null;
+        continue;
+      }
+
+      currentMessage = {
+        timestamp,
+        sender: sender.trim(),
+        message: message.trim()
+      };
+    } else if (currentMessage && line.trim()) {
+      // 多行消息的续行
+      currentMessage.message += '\n' + line.trim();
+    }
+  }
+
+  // 保存最后一条消息
+  if (currentMessage && currentMessage.message.trim()) {
+    conversations.push(currentMessage);
+  }
+
+  return conversations;
+}
+
+// 使用AI识别对话中的客服和客户角色
+async function identifyRolesWithAI(
+  conversations: Array<{ timestamp: string; sender: string; message: string }>,
+  customerName: string
+): Promise<Array<{ timestamp: string; sender: string; role: 'agent' | 'customer'; message: string }>> {
+  try {
+    // 获取所有不同的发送者
+    const senders = Array.from(new Set(conversations.map(c => c.sender)));
+    
+    if (senders.length === 0) {
+      return [];
+    }
+
+    // 如果只有一个发送者，全部标记为客户
+    if (senders.length === 1) {
+      return conversations.map(c => ({ ...c, role: 'customer' as const }));
+    }
+
+    // 使用AI分析前10条消息，识别谁是客服，谁是客户
+    const sampleMessages = conversations.slice(0, Math.min(10, conversations.length))
+      .map(c => `${c.sender}: ${c.message}`).join('\n');
+
+    const prompt = `分析以下WhatsApp聊天记录，识别谁是客服（销售人员），谁是客户。
+
+客户姓名可能是：${customerName}
+
+聊天记录：
+${sampleMessages}
+
+所有参与者：${senders.join(', ')}
+
+请根据对话内容和语气，判断每个参与者的角色。客服通常：
+- 使用更专业的语言
+- 主动提问和引导
+- 介绍产品或服务
+- 使用敬语
+
+客户通常：
+- 提出需求和问题
+- 语气更随意
+- 询问价格、功能等
+
+请以JSON格式返回：{"客服": ["姓名1"], "客户": ["姓名2"]}`;
+
+    const response = await fetch(process.env.AI_BASE_URL + '/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.AI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: process.env.AI_MODEL || 'gpt-4o-mini',
+        messages: [
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.3
+      })
+    });
+
+    if (!response.ok) {
+      console.error('AI角色识别失败，使用默认策略');
+      // 降级策略：第一个人是客服，其他是客户
+      const agentName = senders[0];
+      return conversations.map(c => ({
+        ...c,
+        role: c.sender === agentName ? 'agent' as const : 'customer' as const
+      }));
+    }
+
+    const data = await response.json();
+    const aiResponse = data.choices[0]?.message?.content || '';
+    
+    // 尝试从AI响应中提取JSON
+    const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const roleMapping = JSON.parse(jsonMatch[0]);
+      const agents = new Set(roleMapping['客服'] || []);
+      
+      return conversations.map(c => ({
+        ...c,
+        role: agents.has(c.sender) ? 'agent' as const : 'customer' as const
+      }));
+    }
+
+    // 如果AI响应解析失败，使用默认策略
+    const agentName = senders[0];
+    return conversations.map(c => ({
+      ...c,
+      role: c.sender === agentName ? 'agent' as const : 'customer' as const
+    }));
+  } catch (error) {
+    console.error('AI角色识别出错:', error);
+    // 降级策略
+    const senders = Array.from(new Set(conversations.map(c => c.sender)));
+    const agentName = senders[0];
+    return conversations.map(c => ({
+      ...c,
+      role: c.sender === agentName ? 'agent' as const : 'customer' as const
+    }));
+  }
+}
+
 // 辅助函数：记录审计日志
 async function logAudit(params: {
   action: string;
@@ -1343,6 +1502,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  /**
+   * 上传并解析WhatsApp聊天记录
+   * POST /api/customers/:id/upload-chat
+   */
+  app.post("/api/customers/:id/upload-chat", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { chatText } = req.body;
+
+      if (!chatText || typeof chatText !== 'string') {
+        return res.status(400).json({ error: "请提供聊天记录文本" });
+      }
+
+      // 检查客户是否存在
+      const customer = await storage.getCustomer(id);
+      if (!customer) {
+        return res.status(404).json({ error: "客户不存在" });
+      }
+
+      // 解析WhatsApp聊天记录
+      const conversations = parseWhatsAppChat(chatText);
+      
+      if (conversations.length === 0) {
+        return res.status(400).json({ error: "无法解析聊天记录，请确保格式正确" });
+      }
+
+      // 使用AI分析并识别客服和客户
+      const analyzedConversations = await identifyRolesWithAI(conversations, customer.name || '客户');
+
+      // 更新客户的聊天记录
+      const updatedCustomer = await storage.updateCustomer(id, {
+        conversations: analyzedConversations
+      });
+
+      res.json({
+        success: true,
+        data: updatedCustomer,
+        message: `成功导入${analyzedConversations.length}条对话记录`
+      });
+    } catch (error) {
+      console.error('上传聊天记录失败:', error);
+      res.status(500).json({
+        error: "上传聊天记录失败",
+        message: error instanceof Error ? error.message : "未知错误"
+      });
+    }
+  });
+
   // ============================================
   // 任务 API 路由
   // ============================================
@@ -2500,6 +2707,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('删除学习资料失败:', error);
       res.status(500).json({ error: "删除学习资料失败", details: error.message });
+    }
+  });
+
+  /**
+   * GET /api/knowledge-base
+   * 获取学习资料知识库摘要（供AI使用）
+   * 返回所有学习资料的标题和分类信息
+   */
+  app.get("/api/knowledge-base", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登录" });
+    }
+
+    try {
+      const materials = await storage.getAllLearningMaterials();
+      const categories = await storage.getAllScriptCategories();
+      
+      // 构建分类ID到名称的映射
+      const categoryMap = new Map(categories.map(c => [c.id, c.name]));
+      
+      // 构建知识库摘要
+      const knowledgeBase = materials.map(m => ({
+        id: m.id,
+        title: m.title,
+        category: categoryMap.get(m.categoryId) || '未分类',
+        fileType: m.fileType,
+        uploadDate: m.createdAt
+      }));
+
+      // 按分类分组
+      const byCategory = knowledgeBase.reduce((acc, item) => {
+        const category = item.category;
+        if (!acc[category]) {
+          acc[category] = [];
+        }
+        acc[category].push(item.title);
+        return acc;
+      }, {} as Record<string, string[]>);
+
+      res.json({
+        success: true,
+        data: {
+          totalMaterials: knowledgeBase.length,
+          categories: byCategory,
+          materials: knowledgeBase
+        }
+      });
+    } catch (error: any) {
+      console.error('获取知识库失败:', error);
+      res.status(500).json({ error: "获取知识库失败", details: error.message });
     }
   });
 
