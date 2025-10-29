@@ -3104,6 +3104,202 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============================================
+  // 话术（Scripts）API
+  // ============================================
+  
+  // GET /api/scripts - 获取所有话术
+  app.get("/api/scripts", requireAuth, async (req, res) => {
+    try {
+      const user = getCurrentUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "未登录" });
+      }
+      
+      const scripts = await storage.getAllScripts();
+      res.json({ success: true, data: scripts });
+    } catch (error: any) {
+      console.error('获取话术列表失败:', error);
+      res.status(500).json({ error: "获取话术列表失败" });
+    }
+  });
+  
+  // GET /api/scripts/search - 搜索话术
+  app.get("/api/scripts/search", requireAuth, async (req, res) => {
+    try {
+      const user = getCurrentUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "未登录" });
+      }
+      
+      const { keyword } = req.query;
+      if (!keyword || typeof keyword !== 'string') {
+        return res.status(400).json({ error: "缺少搜索关键词" });
+      }
+      
+      const scripts = await storage.searchScripts(keyword);
+      res.json({ success: true, data: scripts });
+    } catch (error: any) {
+      console.error('搜索话术失败:', error);
+      res.status(500).json({ error: "搜索话术失败" });
+    }
+  });
+  
+  // GET /api/scripts/:id - 获取单个话术详情
+  app.get("/api/scripts/:id", requireAuth, async (req, res) => {
+    try {
+      const user = getCurrentUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "未登录" });
+      }
+      
+      const { id } = req.params;
+      const script = await storage.getScript(id);
+      
+      if (!script) {
+        return res.status(404).json({ error: "话术不存在" });
+      }
+      
+      res.json({ success: true, data: script });
+    } catch (error: any) {
+      console.error('获取话术详情失败:', error);
+      res.status(500).json({ error: "获取话术详情失败" });
+    }
+  });
+  
+  // POST /api/scripts - 创建话术
+  app.post("/api/scripts", requireAuth, async (req, res) => {
+    try {
+      const user = getCurrentUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "未登录" });
+      }
+      
+      const scriptData = {
+        ...req.body,
+        createdBy: user.id,
+        isAIGenerated: req.body.isAIGenerated || 0
+      };
+      
+      const script = await storage.createScript(scriptData);
+      res.json({ success: true, data: script, message: "话术创建成功" });
+    } catch (error: any) {
+      console.error('创建话术失败:', error);
+      res.status(500).json({ error: "创建话术失败", details: error.message });
+    }
+  });
+  
+  // PATCH /api/scripts/:id - 更新话术
+  app.patch("/api/scripts/:id", requireAuth, async (req, res) => {
+    try {
+      const user = getCurrentUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "未登录" });
+      }
+      
+      const { id } = req.params;
+      const script = await storage.getScript(id);
+      
+      if (!script) {
+        return res.status(404).json({ error: "话术不存在" });
+      }
+      
+      // 验证权限：只有创建者可以更新
+      if (script.createdBy !== user.id) {
+        return res.status(403).json({ error: "无权限编辑此话术" });
+      }
+      
+      const updatedScript = await storage.updateScript(id, req.body);
+      res.json({ success: true, data: updatedScript, message: "话术更新成功" });
+    } catch (error: any) {
+      console.error('更新话术失败:', error);
+      res.status(500).json({ error: "更新话术失败" });
+    }
+  });
+  
+  // DELETE /api/scripts/:id - 删除话术
+  app.delete("/api/scripts/:id", requireAuth, async (req, res) => {
+    try {
+      const user = getCurrentUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "未登录" });
+      }
+      
+      const { id } = req.params;
+      const script = await storage.getScript(id);
+      
+      if (!script) {
+        return res.status(404).json({ error: "话术不存在" });
+      }
+      
+      // 验证权限：只有创建者可以删除
+      if (script.createdBy !== user.id) {
+        return res.status(403).json({ error: "无权限删除此话术" });
+      }
+      
+      await storage.deleteScript(id);
+      res.json({ success: true, message: "话术删除成功" });
+    } catch (error: any) {
+      console.error('删除话术失败:', error);
+      res.status(500).json({ error: "删除话术失败" });
+    }
+  });
+  
+  // POST /api/scripts/generate - AI生成话术
+  app.post("/api/scripts/generate", requireAuth, async (req, res) => {
+    try {
+      const user = getCurrentUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "未登录" });
+      }
+      
+      const { customerId, customerContext } = req.body;
+      
+      if (!customerId && !customerContext) {
+        return res.status(400).json({ error: "需要提供客户ID或客户上下文信息" });
+      }
+      
+      let customer;
+      if (customerId) {
+        customer = await storage.getCustomer(customerId);
+        if (!customer) {
+          return res.status(404).json({ error: "客户不存在" });
+        }
+      }
+      
+      // 使用AI生成话术
+      const aiScript = await generateSalesScript(
+        customer || customerContext,
+        customer?.stage || customerContext?.stage || '初次接触'
+      );
+      
+      // 生成话术标题
+      const title = `${customer?.stage || customerContext?.stage || '初次接触'} - ${customer?.name || customerContext?.name || 'AI生成话术'}`;
+      
+      // 保存话术
+      const scriptData = {
+        title,
+        content: aiScript,
+        categoryId: null,
+        stage: customer?.stage || customerContext?.stage || '初次接触',
+        tags: customer?.tags || customerContext?.tags || [],
+        createdBy: user.id,
+        isAIGenerated: 1
+      };
+      
+      const script = await storage.createScript(scriptData);
+      
+      res.json({ 
+        success: true, 
+        data: script, 
+        message: "AI话术生成成功" 
+      });
+    } catch (error: any) {
+      console.error('AI生成话术失败:', error);
+      res.status(500).json({ error: "AI生成话术失败", details: error.message });
+    }
+  });
+
+  // ============================================
   // 对象存储 API（Reference: blueprint:javascript_object_storage）
   // ============================================
   
