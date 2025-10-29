@@ -55,13 +55,16 @@ Preferred communication style: Simple, everyday language.
         - **Knowledge Base API**: `GET /api/knowledge-base` aggregates all learning materials by category with titles and metadata for AI reference.
         - **AI Script Enhancement**: `generateSalesScript()` function now queries knowledge base and includes material titles in prompt context, enabling AI to reference professional resources when generating sales recommendations.
         - **Auto-Learning**: AI automatically incorporates available learning materials (grouped by category) into script generation, making recommendations more professional and data-backed.
-    - **AI Analysis Optimization** (Oct 29):
-        - **Smart Conversation Analysis**: AI now considers conversation count when evaluating customer engagement - customers with 500+ conversations automatically receive "super high engagement" rating
-        - **Status-Aware Analysis**: AI recognizes "已成交" (closed deal) status and provides appropriate analysis focused on retention and upsell opportunities
-        - **Recent Conversation Sampling**: System extracts up to 20 recent conversation snippets for AI analysis while keeping prompt size manageable
-        - **Anti-Template Logic**: Added explicit prompts preventing AI from using generic templates when real conversation data exists
-        - **Engagement Level Criteria**: Updated prompt with clear thresholds - >500 conversations = super high engagement, 100-500 = high engagement, etc.
-        - **Impact**: Fixes issue where customers with thousands of conversations were incorrectly labeled as "low engagement"
+    - **Multi-Agent AI Collaborative Analysis** (Oct 29 - Major Upgrade):
+        - **Architecture Fix**: System was designed with 5 AI agents but only using 1; now all agents work together as intended
+        - **Customer Profile Analysis AI**: Analyzes customer value, investment preferences, cultural background; now considers conversation count (>500 = super high engagement) and recognizes "已成交" status for positive evaluation
+        - **Conversation Sentiment Analysis AI**: Analyzes buying signals, customer concerns, interest levels, and urgency from conversation content
+        - **Risk Assessment AI**: Identifies customer churn risk, provides retention strategies, and prioritizes actions
+        - **Supervisor Review AI**: Quality checks all agent outputs, identifies inconsistencies, and provides final consolidated recommendations
+        - **Technical Implementation**: 4 agents run in parallel using `Promise.allSettled` for fault tolerance; supervisor AI performs final review; comprehensive logging for debugging
+        - **API Enhancement**: `/api/ai/analyze-customer` endpoint now calls `comprehensiveAnalysis()` instead of single `analyzeCustomerProfile()`
+        - **Cache Consistency**: Both cached and non-cached responses return identical structure with `profile` and `comprehensive` data
+        - **Impact**: Much more accurate and detailed customer analysis with multiple expert perspectives and quality assurance
     - **Scripts Management System** (Oct 29):
         - **Database Schema**: `scripts` table with fields: title, content, stage (customer lifecycle stage), tags, categoryId, isAIGenerated flag, createdBy (user ownership).
         - **Storage Layer**: Complete CRUD methods - `createScript()`, `getScripts()`, `getScript()`, `updateScript()`, `deleteScript()` with user-based filtering and ownership validation.
