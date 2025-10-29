@@ -124,7 +124,7 @@ function OfficePreview({ materialId }: { materialId: string }) {
 export default function ScriptsPage() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
-  const [newScript, setNewScript] = useState({ title: '', content: '', category: '' });
+  const [newScript, setNewScript] = useState({ title: '', content: '', stage: '' });
   const [isGenerating, setIsGenerating] = useState(false);
   
   // 学习资料状态
@@ -177,7 +177,7 @@ export default function ScriptsPage() {
         title: "创建成功",
         description: "话术已保存",
       });
-      setNewScript({ title: '', content: '', category: '' });
+      setNewScript({ title: '', content: '', stage: '' });
     },
     onError: (error: any) => {
       toast({
@@ -244,7 +244,7 @@ export default function ScriptsPage() {
       setNewScript({
         title: response.data.title,
         content: response.data.content,
-        category: response.data.stage || ''
+        stage: response.data.stage || ''
       });
       setIsGenerating(false);
     },
@@ -443,7 +443,7 @@ export default function ScriptsPage() {
     // 使用示例客户上下文进行AI生成
     const customerContext = {
       name: '示例客户',
-      stage: newScript.category || '初次接触',
+      stage: newScript.stage || '初次接触',
       tags: []
     };
     generateScriptMutation.mutate(customerContext);
@@ -629,10 +629,10 @@ export default function ScriptsPage() {
                     data-testid="input-script-title"
                   />
                   <Input
-                    placeholder="分类"
-                    value={newScript.category}
-                    onChange={(e) => setNewScript({ ...newScript, category: e.target.value })}
-                    data-testid="input-script-category"
+                    placeholder="阶段 (如：初次接触、热聊中、考虑中)"
+                    value={newScript.stage}
+                    onChange={(e) => setNewScript({ ...newScript, stage: e.target.value })}
+                    data-testid="input-script-stage"
                   />
                   <Textarea
                     placeholder="话术内容..."
@@ -657,7 +657,7 @@ export default function ScriptsPage() {
                         title: newScript.title,
                         content: newScript.content,
                         categoryId: null,
-                        stage: newScript.category || null,
+                        stage: newScript.stage || null,
                         tags: [],
                         isAIGenerated: 0
                       });
