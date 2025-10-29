@@ -40,11 +40,18 @@ function parseWhatsAppChat(chatText: string): Array<{
     message: string;
   }> = [];
 
-  // 支持多种WhatsApp导出格式：
+  // 支持真实WhatsApp导出格式：
+  // [11/9/25 17:57:02] Bea: Vale, el lunes me pondré en contacto contigo
   // [26/10/25 06:41:30] Lisa: 你在干嘛
-  // [26/10/25 06:41:30] --清錢-马超: 消息内容
-  // 统一处理不同的换行符格式（\r\n, \n, \r）
-  const lines = chatText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  // 注意：日期和月份可能是单个或两个数字
+  
+  // 统一处理不同的换行符格式和移除零宽字符
+  const cleanText = chatText
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/[\u200B-\u200D\uFEFF]/g, ''); // 移除零宽字符
+    
+  const lines = cleanText.split('\n');
   let currentMessage: { timestamp: string; sender: string; message: string } | null = null;
 
   for (const line of lines) {
@@ -55,8 +62,9 @@ function parseWhatsAppChat(chatText: string): Array<{
       continue;
     }
     
-    // 匹配格式: [DD/MM/YY HH:MM:SS] 发送者: 消息
-    const match = trimmedLine.match(/^\[(\d{2}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2})\]\s+([^:]+):\s*(.*)$/);
+    // 匹配格式: [D/M/YY HH:MM:SS] 或 [DD/MM/YY HH:MM:SS]
+    // 支持单个或双个数字的日期和月份
+    const match = trimmedLine.match(/^\[(\d{1,2}\/\d{1,2}\/\d{2}\s+\d{2}:\d{2}:\d{2})\]\s+([^:]+):\s*(.*)$/);
     
     if (match) {
       // 如果有当前消息，先保存
@@ -67,20 +75,45 @@ function parseWhatsAppChat(chatText: string): Array<{
       const [, timestamp, sender, message] = match;
       
       // 过滤系统消息和附件消息
-      if (message.includes('<附件：') || 
-          message.includes('消息和通话已进行端到端加密')) {
+      const systemMessagePatterns = [
+        '消息和通话已进行端到端加密',
+        '已成为联系人',
+        '音频已忽略',
+        '图像已忽略',
+        '视频已忽略',
+        '文件已忽略',
+        '语音通话',
+        '未接语音通话',
+        '未接听',
+        '轻触回拨',
+        '<附件：',
+        '<这条消息已经过编辑>',
+        '‎' // 零宽字符开头的消息
+      ];
+      
+      const isSystemMessage = systemMessagePatterns.some(pattern => 
+        message.includes(pattern) || trimmedLine.includes(pattern)
+      );
+      
+      if (isSystemMessage || !message.trim()) {
         currentMessage = null;
         continue;
       }
 
       currentMessage = {
         timestamp,
-        sender: sender.trim(),
+        sender: sender.trim().replace(/[.:：\s]+$/, ''), // 移除发送者名字末尾的符号
         message: message.trim()
       };
     } else if (currentMessage && trimmedLine) {
-      // 多行消息的续行
-      currentMessage.message += '\n' + trimmedLine;
+      // 多行消息的续行（但排除系统消息）
+      const isSystemLine = trimmedLine.includes('‎') || 
+                          trimmedLine.includes('已忽略') ||
+                          trimmedLine.includes('语音通话');
+      
+      if (!isSystemLine) {
+        currentMessage.message += '\n' + trimmedLine;
+      }
     }
   }
 
