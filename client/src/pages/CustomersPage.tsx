@@ -543,11 +543,46 @@ export default function CustomersPage() {
     }
   });
 
+  // 处理文件上传
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // 检查文件类型
+    if (!file.name.endsWith('.txt')) {
+      toast({
+        title: "文件格式错误",
+        description: "请上传 .txt 格式的文件",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // 读取文件内容
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      setChatText(content);
+      toast({
+        title: "文件读取成功",
+        description: `已读取 ${file.name}`,
+      });
+    };
+    reader.onerror = () => {
+      toast({
+        title: "文件读取失败",
+        description: "请检查文件是否损坏",
+        variant: "destructive",
+      });
+    };
+    reader.readAsText(file, 'UTF-8');
+  };
+
   const handleUploadChat = () => {
     if (!selectedCustomer || !chatText.trim()) {
       toast({
         title: "提示",
-        description: "请粘贴聊天记录内容",
+        description: "请粘贴聊天记录内容或上传txt文件",
         variant: "destructive",
       });
       return;
@@ -1167,11 +1202,32 @@ export default function CustomersPage() {
                           </div>
                           
                           <div>
-                            <Label>粘贴聊天记录</Label>
+                            <div className="flex items-center justify-between mb-2">
+                              <Label>粘贴聊天记录或上传文件</Label>
+                              <div>
+                                <input
+                                  type="file"
+                                  accept=".txt"
+                                  onChange={handleFileUpload}
+                                  className="hidden"
+                                  id="chat-file-upload"
+                                  data-testid="input-file-upload"
+                                />
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => document.getElementById('chat-file-upload')?.click()}
+                                  data-testid="button-choose-file"
+                                >
+                                  📁 选择txt文件
+                                </Button>
+                              </div>
+                            </div>
                             <Textarea
                               value={chatText}
                               onChange={(e) => setChatText(e.target.value)}
-                              placeholder="粘贴完整的聊天记录..."
+                              placeholder="粘贴完整的聊天记录，或点击上方按钮上传txt文件..."
                               className="h-64 font-mono text-xs"
                               data-testid="textarea-chat-upload"
                             />

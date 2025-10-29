@@ -7,8 +7,8 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use(express.json({ limit: '10mb' })); // 增加请求体大小限制到10MB
+app.use(express.urlencoded({ extended: false, limit: '10mb' }));
 
 // 信任反向代理（nginx），允许在HTTPS代理后正确处理secure cookie
 app.set('trust proxy', 1);
