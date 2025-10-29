@@ -1114,7 +1114,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================
 
   /**
-   * 客户画像分析
+   * 客户画像分析（启用多AI agent协同）
    * POST /api/ai/analyze-customer
    */
   app.post("/api/ai/analyze-customer", async (req, res) => {
@@ -1129,21 +1129,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // 检查缓存
       if (useCache) {
-        const cached = analysisCache.get(customerId, 'profile');
+        const cached = analysisCache.get(customerId, 'comprehensive');
         if (cached) {
-          return res.json({ data: cached, fromCache: true });
+          // 返回与非缓存路径相同的结构
+          return res.json({ 
+            data: cached.profile || {}, 
+            comprehensive: cached,
+            fromCache: true 
+          });
         }
       }
 
-      // AI分析
-      const result = await analyzeCustomerProfile(customer);
+      console.log(`🤖 启动多AI agent协同分析 - 客户ID: ${customerId}`);
+      
+      // 使用完整的多agent综合分析流程
+      const { comprehensiveAnalysis } = await import('./ai/agents');
+      const result = await comprehensiveAnalysis({
+        customer,
+        conversations: Array.isArray(customer.conversations) ? customer.conversations : [],
+        stage: customer.stage as string | undefined,
+        behaviorData: {
+          lastContactDate: customer.lastContact,
+          followUpCount: customer.followUpCount || 0,
+          responseRate: customer.responseRate || 0
+        }
+      });
 
-      // 保存缓存
-      analysisCache.set(customerId, 'profile', result);
+      console.log(`✅ 多AI分析完成 - 画像: ${result.profile ? '✓' : '✗'}, 情绪: ${result.sentiment ? '✓' : '✗'}, 风险: ${result.risk ? '✓' : '✗'}, 主管: ${result.supervisor ? '✓' : '✗'}`);
 
-      res.json({ data: result, fromCache: false });
+      // 保存缓存（保存完整的综合分析结果）
+      analysisCache.set(customerId, 'comprehensive', result);
+
+      // 为了向后兼容，也返回profile作为主要结果
+      // 但同时提供其他agent的分析结果供前端使用
+      res.json({ 
+        data: result.profile || {}, 
+        comprehensive: result,
+        fromCache: false 
+      });
     } catch (error) {
-      console.error('客户画像分析失败:', error);
+      console.error('❌ 多AI协同分析失败:', error);
       res.status(500).json({ 
         error: "分析失败", 
         message: error instanceof Error ? error.message : '未知错误' 
