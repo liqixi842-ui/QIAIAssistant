@@ -382,6 +382,14 @@ export default function CustomersPage() {
       if ((selectedCustomer as any).conversationCount !== undefined) customerData.conversationCount = (selectedCustomer as any).conversationCount;
       if ((selectedCustomer as any).replyCount !== undefined) customerData.replyCount = (selectedCustomer as any).replyCount;
       
+      // ⚠️ 关键：发送对话记录给AI（之前漏掉了这个字段！）
+      if ((selectedCustomer as any).conversations && Array.isArray((selectedCustomer as any).conversations)) {
+        customerData.conversations = (selectedCustomer as any).conversations;
+      }
+      
+      // 状态字段（重要：已成交客户需要特殊处理）
+      if ((selectedCustomer as any).stage) customerData.stage = (selectedCustomer as any).stage;
+      
       const requestData = {
         customerId: selectedCustomer.id,
         customer: customerData,
