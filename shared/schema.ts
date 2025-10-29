@@ -256,3 +256,26 @@ export const insertFeedbackSchema = createInsertSchema(feedbacks).omit({
 
 export type InsertFeedback = z.infer<typeof insertFeedbackSchema>;
 export type Feedback = typeof feedbacks.$inferSelect;
+
+// 话术表 - 销售话术库
+export const scripts = pgTable("scripts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(), // 话术标题
+  content: text("content").notNull(), // 话术内容
+  categoryId: varchar("category_id"), // 分类ID（关联scriptCategories表）
+  stage: text("stage"), // 适用阶段（初次接触、热聊中、考虑中等）
+  tags: jsonb("tags").$type<string[]>(), // 标签数组
+  createdBy: varchar("created_by").notNull(), // 创建者ID
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`), // 创建时间
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`), // 更新时间
+  isAIGenerated: integer("is_ai_generated").notNull().default(0), // 是否AI生成：0手动，1AI生成
+});
+
+export const insertScriptSchema = createInsertSchema(scripts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertScript = z.infer<typeof insertScriptSchema>;
+export type Script = typeof scripts.$inferSelect;

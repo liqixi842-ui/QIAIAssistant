@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type Customer, type InsertCustomer, type Task, type InsertTask, type ChatMessage, type InsertChatMessage, type Chat, type InsertChat, type ChatParticipant, type InsertChatParticipant, type LearningMaterial, type InsertLearningMaterial, type ScriptCategory, type InsertScriptCategory, type AuditLog, type InsertAuditLog, type Feedback, type InsertFeedback, users, customers, tasks, chatMessages, chats, chatParticipants, learningMaterials, scriptCategories, auditLogs, feedbacks } from "@shared/schema";
+import { type User, type InsertUser, type Customer, type InsertCustomer, type Task, type InsertTask, type ChatMessage, type InsertChatMessage, type Chat, type InsertChat, type ChatParticipant, type InsertChatParticipant, type LearningMaterial, type InsertLearningMaterial, type ScriptCategory, type InsertScriptCategory, type AuditLog, type InsertAuditLog, type Feedback, type InsertFeedback, type Script, type InsertScript, users, customers, tasks, chatMessages, chats, chatParticipants, learningMaterials, scriptCategories, auditLogs, feedbacks, scripts } from "@shared/schema";
 import { db } from "./db";
 import { eq, inArray, or, sql, desc, and, like, ilike } from "drizzle-orm";
 
@@ -71,6 +71,15 @@ export interface IStorage {
   updateScriptCategory(id: string, updates: Partial<InsertScriptCategory>): Promise<ScriptCategory | undefined>;
   deleteScriptCategory(id: string): Promise<boolean>;
   getAllScriptCategories(): Promise<ScriptCategory[]>;
+  
+  // Script methods
+  getScript(id: string): Promise<Script | undefined>;
+  createScript(script: InsertScript): Promise<Script>;
+  updateScript(id: string, updates: Partial<InsertScript>): Promise<Script | undefined>;
+  deleteScript(id: string): Promise<boolean>;
+  getAllScripts(): Promise<Script[]>;
+  getScriptsByUser(userId: string): Promise<Script[]>;
+  searchScripts(keyword: string, userId?: string): Promise<Script[]>;
   
   // Audit log methods
   createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
@@ -859,6 +868,63 @@ export class PostgresStorage implements IStorage {
     );
     
     return tasksWithCustomers;
+  }
+  
+  // ============================================
+  // Script methods
+  // ============================================
+  
+  async getScript(id: string): Promise<Script | undefined> {
+    const result = await db.select().from(scripts).where(eq(scripts.id, id)).limit(1);
+    return result[0];
+  }
+  
+  async createScript(script: InsertScript): Promise<Script> {
+    const result = await db.insert(scripts).values(script).returning();
+    return result[0];
+  }
+  
+  async updateScript(id: string, updates: Partial<InsertScript>): Promise<Script | undefined> {
+    const result = await db.update(scripts)
+      .set({ ...updates, updatedAt: sql`CURRENT_TIMESTAMP` })
+      .where(eq(scripts.id, id))
+      .returning();
+    return result[0];
+  }
+  
+  async deleteScript(id: string): Promise<boolean> {
+    const result = await db.delete(scripts).where(eq(scripts.id, id)).returning();
+    return result.length > 0;
+  }
+  
+  async getAllScripts(): Promise<Script[]> {
+    return await db.select().from(scripts).orderBy(desc(scripts.createdAt));
+  }
+  
+  async getScriptsByUser(userId: string): Promise<Script[]> {
+    return await db.select()
+      .from(scripts)
+      .where(eq(scripts.createdBy, userId))
+      .orderBy(desc(scripts.createdAt));
+  }
+  
+  async searchScripts(keyword: string, userId?: string): Promise<Script[]> {
+    const conditions = [
+      or(
+        ilike(scripts.title, `%${keyword}%`),
+        ilike(scripts.content, `%${keyword}%`)
+      )
+    ];
+    
+    if (userId) {
+      conditions.push(eq(scripts.createdBy, userId));
+    }
+    
+    return await db.select()
+      .from(scripts)
+      .where(and(...conditions.filter(Boolean)))
+      .orderBy(desc(scripts.createdAt))
+      .limit(50);
   }
 }
 
