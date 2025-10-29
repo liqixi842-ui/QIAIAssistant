@@ -2809,7 +2809,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         title: m.title,
         category: categoryMap.get(m.categoryId) || '未分类',
         fileType: m.fileType,
-        uploadDate: m.createdAt
+        uploadDate: m.uploadDate
       }));
 
       // 按分类分组
