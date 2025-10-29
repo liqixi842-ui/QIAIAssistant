@@ -35,9 +35,13 @@ interface Script {
   id: string;
   title: string;
   content: string;
-  category: string;
-  likes: number;
-  isAIGenerated: boolean;
+  categoryId: string | null;
+  stage: string | null;
+  tags: string[];
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  isAIGenerated: number;
 }
 
 interface Category {
@@ -58,32 +62,6 @@ interface LearningMaterial {
   uploadedBy: string;
 }
 
-const mockScripts: Script[] = [
-  {
-    id: '1',
-    title: '初次接触话术',
-    content: '您好，我是XX证券的投资顾问。看到您对投资理财很感兴趣，想了解一下您目前的投资经验如何？',
-    category: '开场白',
-    likes: 23,
-    isAIGenerated: false
-  },
-  {
-    id: '2',
-    title: 'AI推荐 - 科技股话术',
-    content: '张总您好，最近科技板块表现不错，特别是AI相关的龙头股。根据您之前对成长股的兴趣，我为您准备了几只潜力标的...',
-    category: '产品推荐',
-    likes: 45,
-    isAIGenerated: true
-  },
-  {
-    id: '3',
-    title: '开户引导',
-    content: '李总，开户流程非常简单，只需要3步：1.准备身份证和银行卡 2.视频认证 3.设置密码。全程只需5分钟...',
-    category: '开户',
-    likes: 31,
-    isAIGenerated: false
-  }
-];
 
 // Office文档预览组件 - 使用签名URL
 function OfficePreview({ materialId }: { materialId: string }) {
@@ -166,6 +144,11 @@ export default function ScriptsPage() {
   const [newCategoryParentId, setNewCategoryParentId] = useState<string | null>(null);
   const [materialSearchTerm, setMaterialSearchTerm] = useState('');
 
+  // 获取话术列表
+  const { data: scriptsData, isLoading: isLoadingScripts } = useQuery<{ success: boolean; data: Script[] }>({
+    queryKey: ['/api/scripts'],
+  });
+
   // 获取学习资料列表
   const { data: materialsData, isLoading: isLoadingMaterials } = useQuery<{ success: boolean; data: LearningMaterial[] }>({
     queryKey: ['/api/learning-materials'],
@@ -176,11 +159,104 @@ export default function ScriptsPage() {
     queryKey: ['/api/script-categories'],
   });
 
+  const scripts = scriptsData?.data || [];
   const learningMaterials = materialsData?.data || [];
   const categories = (categoriesData?.data || []).map(cat => ({
     ...cat,
     isExpanded: expandedCategories.has(cat.id)
   }));
+
+  // 创建话术
+  const createScriptMutation = useMutation({
+    mutationFn: async (data: { title: string; content: string; categoryId: string | null; stage: string | null; tags: string[]; isAIGenerated: number }) => {
+      return await apiRequest('POST', '/api/scripts', data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/scripts'] });
+      toast({
+        title: "创建成功",
+        description: "话术已保存",
+      });
+      setNewScript({ title: '', content: '', category: '' });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "创建失败",
+        description: error.message || "请重试",
+        variant: "destructive",
+      });
+    }
+  });
+
+  // 更新话术
+  const updateScriptMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<Script> }) => {
+      return await apiRequest('PATCH', `/api/scripts/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/scripts'] });
+      toast({
+        title: "更新成功",
+        description: "话术已更新",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "更新失败",
+        description: error.message || "请重试",
+        variant: "destructive",
+      });
+    }
+  });
+
+  // 删除话术
+  const deleteScriptMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return await apiRequest('DELETE', `/api/scripts/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/scripts'] });
+      toast({
+        title: "已删除",
+        description: "话术已删除",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "删除失败",
+        description: error.message || "请重试",
+        variant: "destructive",
+      });
+    }
+  });
+
+  // AI生成话术
+  const generateScriptMutation = useMutation({
+    mutationFn: async (customerContext: any) => {
+      return await apiRequest('POST', '/api/scripts/generate', { customerContext });
+    },
+    onSuccess: (response: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/scripts'] });
+      toast({
+        title: "AI生成成功",
+        description: "话术已自动保存",
+      });
+      setNewScript({
+        title: response.data.title,
+        content: response.data.content,
+        category: response.data.stage || ''
+      });
+      setIsGenerating(false);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "AI生成失败",
+        description: error.message || "请重试",
+        variant: "destructive",
+      });
+      setIsGenerating(false);
+    }
+  });
 
   // 创建学习资料记录
   const createMaterialMutation = useMutation({
@@ -273,7 +349,7 @@ export default function ScriptsPage() {
     }
   });
 
-  const filteredScripts = mockScripts.filter(script =>
+  const filteredScripts = scripts.filter(script =>
     script.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     script.content.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -364,14 +440,13 @@ export default function ScriptsPage() {
 
   const handleAIGenerate = () => {
     setIsGenerating(true);
-    setTimeout(() => {
-      setNewScript({
-        title: 'AI生成 - 稳健型客户话术',
-        content: '根据您的风险偏好，我为您筛选了一些稳健型的投资组合，年化收益预期在8-12%之间，同时风险可控...',
-        category: '个性化推荐'
-      });
-      setIsGenerating(false);
-    }, 2000);
+    // 使用示例客户上下文进行AI生成
+    const customerContext = {
+      name: '示例客户',
+      stage: newScript.category || '初次接触',
+      tags: []
+    };
+    generateScriptMutation.mutate(customerContext);
   };
 
   // 文件上传成功回调
@@ -566,7 +641,30 @@ export default function ScriptsPage() {
                     rows={6}
                     data-testid="textarea-script-content"
                   />
-                  <Button className="w-full" data-testid="button-save-script">保存话术</Button>
+                  <Button 
+                    className="w-full" 
+                    data-testid="button-save-script"
+                    onClick={() => {
+                      if (!newScript.title || !newScript.content) {
+                        toast({
+                          title: "请填写完整",
+                          description: "标题和内容不能为空",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                      createScriptMutation.mutate({
+                        title: newScript.title,
+                        content: newScript.content,
+                        categoryId: null,
+                        stage: newScript.category || null,
+                        tags: [],
+                        isAIGenerated: 0
+                      });
+                    }}
+                  >
+                    保存话术
+                  </Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -578,29 +676,36 @@ export default function ScriptsPage() {
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <h3 className="font-semibold">{script.title}</h3>
-                    {script.isAIGenerated && (
+                    {script.isAIGenerated === 1 && (
                       <Sparkles className="h-4 w-4 text-primary" />
                     )}
                   </div>
-                  <Badge variant="secondary">{script.category}</Badge>
+                  <Badge variant="secondary">{script.stage || '通用'}</Badge>
                 </div>
                 <p className="text-sm text-muted-foreground mb-4 line-clamp-3">
                   {script.content}
                 </p>
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                    <Heart className="h-4 w-4" />
-                    <span>{script.likes}</span>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleCopy(script.content)}
+                      data-testid={`button-copy-${script.id}`}
+                    >
+                      <Copy className="h-4 w-4 mr-1" />
+                      复制
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deleteScriptMutation.mutate(script.id)}
+                      data-testid={`button-delete-${script.id}`}
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      删除
+                    </Button>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleCopy(script.content)}
-                    data-testid={`button-copy-${script.id}`}
-                  >
-                    <Copy className="h-4 w-4 mr-1" />
-                    复制
-                  </Button>
                 </div>
               </Card>
             ))}
