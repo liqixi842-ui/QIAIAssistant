@@ -55,6 +55,13 @@ Preferred communication style: Simple, everyday language.
         - **Knowledge Base API**: `GET /api/knowledge-base` aggregates all learning materials by category with titles and metadata for AI reference.
         - **AI Script Enhancement**: `generateSalesScript()` function now queries knowledge base and includes material titles in prompt context, enabling AI to reference professional resources when generating sales recommendations.
         - **Auto-Learning**: AI automatically incorporates available learning materials (grouped by category) into script generation, making recommendations more professional and data-backed.
+    - **AI Analysis Optimization** (Oct 29):
+        - **Smart Conversation Analysis**: AI now considers conversation count when evaluating customer engagement - customers with 500+ conversations automatically receive "super high engagement" rating
+        - **Status-Aware Analysis**: AI recognizes "已成交" (closed deal) status and provides appropriate analysis focused on retention and upsell opportunities
+        - **Recent Conversation Sampling**: System extracts up to 20 recent conversation snippets for AI analysis while keeping prompt size manageable
+        - **Anti-Template Logic**: Added explicit prompts preventing AI from using generic templates when real conversation data exists
+        - **Engagement Level Criteria**: Updated prompt with clear thresholds - >500 conversations = super high engagement, 100-500 = high engagement, etc.
+        - **Impact**: Fixes issue where customers with thousands of conversations were incorrectly labeled as "low engagement"
     - **Scripts Management System** (Oct 29):
         - **Database Schema**: `scripts` table with fields: title, content, stage (customer lifecycle stage), tags, categoryId, isAIGenerated flag, createdBy (user ownership).
         - **Storage Layer**: Complete CRUD methods - `createScript()`, `getScripts()`, `getScript()`, `updateScript()`, `deleteScript()` with user-based filtering and ownership validation.
