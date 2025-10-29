@@ -21,10 +21,38 @@ function getAI(): AIAdapter {
  */
 export async function analyzeCustomerProfile(customerData: any) {
   try {
+    // 分析对话记录数量和质量
+    const conversationCount = customerData.conversations?.length || 0;
+    const hasConversations = conversationCount > 0;
+    
+    // 提取最近的对话样本（最多20条）用于AI分析
+    const recentConversations = hasConversations 
+      ? customerData.conversations.slice(-20).map((c: any) => ({
+          sender: c.sender,
+          role: c.role,
+          message: c.message.substring(0, 200), // 限制单条消息长度
+          timestamp: c.timestamp
+        }))
+      : [];
+    
     const prompt = `请分析以下客户信息：
 
-客户资料：
-${JSON.stringify(customerData, null, 2)}
+【客户基本资料】
+${JSON.stringify({
+  ...customerData,
+  conversations: undefined // 移除完整对话记录，避免prompt过长
+}, null, 2)}
+
+【对话记录统计】
+- 总对话数：${conversationCount}条
+- 是否有对话历史：${hasConversations ? '是' : '否'}
+${hasConversations ? `- 最近对话样本（最多20条）：\n${JSON.stringify(recentConversations, null, 2)}` : ''}
+
+【重要提示】
+1. 如果客户有大量对话记录（>50条），说明互动频繁，粘度高，应该给予积极评价
+2. 如果客户状态为"已成交"，说明转化成功，应该重点关注后续维护和复购机会
+3. 请根据实际的对话内容和数量来评估粘度，而不是使用通用模板
+4. 对话记录越多，说明客户越活跃，成交概率越高
 
 请严格按照JSON格式返回分析结果。`;
 
