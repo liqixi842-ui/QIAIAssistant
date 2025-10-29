@@ -555,6 +555,7 @@ export default function CustomersPage() {
         description: "请上传 .txt 格式的文件",
         variant: "destructive",
       });
+      event.target.value = ''; // 重置文件输入
       return;
     }
 
@@ -563,10 +564,20 @@ export default function CustomersPage() {
     reader.onload = (e) => {
       const content = e.target?.result as string;
       setChatText(content);
+      
+      // 计算文件大小（KB或MB）
+      const sizeKB = (file.size / 1024).toFixed(2);
+      const sizeDisplay = file.size > 1024 * 1024 
+        ? `${(file.size / 1024 / 1024).toFixed(2)} MB`
+        : `${sizeKB} KB`;
+      
       toast({
         title: "文件读取成功",
-        description: `已读取 ${file.name}`,
+        description: `已读取 ${file.name} (${sizeDisplay})`,
       });
+      
+      // 重置文件输入，允许重复上传相同文件
+      event.target.value = '';
     };
     reader.onerror = () => {
       toast({
@@ -574,6 +585,7 @@ export default function CustomersPage() {
         description: "请检查文件是否损坏",
         variant: "destructive",
       });
+      event.target.value = ''; // 重置文件输入
     };
     reader.readAsText(file, 'UTF-8');
   };

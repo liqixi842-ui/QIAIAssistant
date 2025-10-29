@@ -44,11 +44,12 @@ Preferred communication style: Simple, everyday language.
         - **主管 (Supervisor)**: Full access to all data across the organization.
         - **Implementation**: `getCustomersByUser()` and `getAuthorizedUserIds()` helper methods enforce hierarchy in Dashboard stats, Customer pages, and Reports pages; `/api/customers`, `/api/dashboard/stats`, `/api/reports`, and `/api/reports/summary-tables` endpoints correctly apply user context before filtering; team chat pages exempt from restrictions.
         - **Fix (Oct 28)**: Reports summary-tables endpoint now correctly passes `userId` and `userRole` to `getReportsData()`, ensuring supervisors can view all subordinate data.
-    - **WhatsApp Chat History Upload** (Oct 28):
+    - **WhatsApp Chat History Upload** (Oct 28, Enhanced Oct 29):
         - **Parser**: `parseWhatsAppChat()` function supports format `[DD/MM/YY HH:MM:SS] Sender: Message`, normalizes all line break formats (\r\n, \n, \r), handles multi-line messages, filters system messages, returns array of {timestamp, sender, message} objects.
         - **AI Role Detection**: `identifyRolesWithAI()` analyzes conversations to distinguish customer vs agent messages based on tone and content, with schema validation to prevent prompt injection attacks.
-        - **API**: `POST /api/customers/:id/upload-chat` receives chat text, parses it, identifies roles using AI, and stores in `conversations` JSONB field.
-        - **Frontend**: Upload button in Customer Details dialog (Conversation tab), modal with textarea for pasting chat history, displays imported conversations as individual message bubbles with role-based styling (agent: right-aligned primary, customer: left-aligned muted).
+        - **API**: `POST /api/customers/:id/upload-chat` receives chat text, parses it, identifies roles using AI, and stores in `conversations` JSONB field. Request body limit increased to 10MB to handle large chat histories.
+        - **Frontend**: Upload button in Customer Details dialog (Conversation tab), modal with textarea for pasting chat history OR file upload button for .txt files, displays imported conversations as individual message bubbles with role-based styling (agent: right-aligned primary, customer: left-aligned muted).
+        - **File Upload**: Frontend reads .txt files using FileReader API and populates textarea automatically, supporting large chat exports without manual copy-paste.
         - **Database**: Added `conversations` field to `updateCustomer()` method in PostgresStorage, conversations stored as JSONB array with {timestamp, sender, role, message} structure.
     - **Knowledge Base Integration for AI Scripts** (Oct 28):
         - **Knowledge Base API**: `GET /api/knowledge-base` aggregates all learning materials by category with titles and metadata for AI reference.
