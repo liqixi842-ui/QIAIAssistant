@@ -54,6 +54,13 @@ Preferred communication style: Simple, everyday language.
         - **Knowledge Base API**: `GET /api/knowledge-base` aggregates all learning materials by category with titles and metadata for AI reference.
         - **AI Script Enhancement**: `generateSalesScript()` function now queries knowledge base and includes material titles in prompt context, enabling AI to reference professional resources when generating sales recommendations.
         - **Auto-Learning**: AI automatically incorporates available learning materials (grouped by category) into script generation, making recommendations more professional and data-backed.
+    - **Scripts Management System** (Oct 29):
+        - **Database Schema**: `scripts` table with fields: title, content, stage (customer lifecycle stage), tags, categoryId, isAIGenerated flag, createdBy (user ownership).
+        - **Storage Layer**: Complete CRUD methods - `createScript()`, `getScripts()`, `getScript()`, `updateScript()`, `deleteScript()` with user-based filtering and ownership validation.
+        - **API Endpoints**: RESTful endpoints - `GET /api/scripts` (list all user's scripts), `POST /api/scripts` (create), `PATCH /api/scripts/:id` (update), `DELETE /api/scripts/:id` (delete with ownership check).
+        - **AI Generation**: `POST /api/scripts/generate` endpoint generates personalized sales scripts based on customer context (customerId or customerContext), automatically integrates knowledge base materials, saves generated scripts with isAIGenerated=1 flag.
+        - **Frontend Integration**: ScriptsPage with React Query for data management, AI one-click generation, CRUD operations, integration with learning materials library.
+        - **Permissions**: Users can only view, edit, and delete their own scripts; AI-generated scripts are automatically tagged and attributed to the requesting user.
 
 ## External Dependencies
 
