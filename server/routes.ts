@@ -131,18 +131,26 @@ function fallbackRoleIdentification(
   senders: string[],
   customerName: string
 ): Array<{ timestamp: string; sender: string; role: 'agent' | 'customer'; message: string }> {
-  // 策略1：如果customerName匹配某个sender，ta就是客户
-  const matchedCustomer = senders.find(s => 
-    s.toLowerCase().includes(customerName.toLowerCase()) || 
-    customerName.toLowerCase().includes(s.toLowerCase())
-  );
+  // 策略1：如果customerName非空且匹配某个sender，ta就是客户
+  const trimmedCustomerName = customerName.trim();
   
-  if (matchedCustomer) {
-    console.log(`使用智能降级策略：匹配到客户名 ${matchedCustomer}`);
-    return conversations.map(c => ({
-      ...c,
-      role: c.sender === matchedCustomer ? 'customer' as const : 'agent' as const
-    }));
+  if (trimmedCustomerName.length > 0) {
+    const matchedCustomer = senders.find(s => {
+      const trimmedSender = s.trim().toLowerCase();
+      const lowerCustomerName = trimmedCustomerName.toLowerCase();
+      // 精确匹配或包含关系（但避免空字符串的false positive）
+      return trimmedSender === lowerCustomerName ||
+             trimmedSender.includes(lowerCustomerName) ||
+             lowerCustomerName.includes(trimmedSender);
+    });
+    
+    if (matchedCustomer) {
+      console.log(`✅ 使用智能降级策略：匹配到客户名 "${matchedCustomer}"`);
+      return conversations.map(c => ({
+        ...c,
+        role: c.sender === matchedCustomer ? 'customer' as const : 'agent' as const
+      }));
+    }
   }
   
   // 策略2：假设发消息更少的是客户（因为通常客户回复较少）
@@ -153,7 +161,7 @@ function fallbackRoleIdentification(
   messageCounts.sort((a, b) => a.count - b.count);
   const likelyCustomer = messageCounts[0].sender;
   
-  console.log(`使用智能降级策略：根据消息数量判断 ${likelyCustomer} 可能是客户`);
+  console.log(`✅ 使用智能降级策略：根据消息数量判断 "${likelyCustomer}" 可能是客户（发送${messageCounts[0].count}条消息）`);
   return conversations.map(c => ({
     ...c,
     role: c.sender === likelyCustomer ? 'customer' as const : 'agent' as const
