@@ -125,6 +125,41 @@ function parseWhatsAppChat(chatText: string): Array<{
   return conversations;
 }
 
+// 智能降级策略：当AI无法识别时使用的备用方案
+function fallbackRoleIdentification(
+  conversations: Array<{ timestamp: string; sender: string; message: string }>,
+  senders: string[],
+  customerName: string
+): Array<{ timestamp: string; sender: string; role: 'agent' | 'customer'; message: string }> {
+  // 策略1：如果customerName匹配某个sender，ta就是客户
+  const matchedCustomer = senders.find(s => 
+    s.toLowerCase().includes(customerName.toLowerCase()) || 
+    customerName.toLowerCase().includes(s.toLowerCase())
+  );
+  
+  if (matchedCustomer) {
+    console.log(`使用智能降级策略：匹配到客户名 ${matchedCustomer}`);
+    return conversations.map(c => ({
+      ...c,
+      role: c.sender === matchedCustomer ? 'customer' as const : 'agent' as const
+    }));
+  }
+  
+  // 策略2：假设发消息更少的是客户（因为通常客户回复较少）
+  const messageCounts = senders.map(s => ({
+    sender: s,
+    count: conversations.filter(c => c.sender === s).length
+  }));
+  messageCounts.sort((a, b) => a.count - b.count);
+  const likelyCustomer = messageCounts[0].sender;
+  
+  console.log(`使用智能降级策略：根据消息数量判断 ${likelyCustomer} 可能是客户`);
+  return conversations.map(c => ({
+    ...c,
+    role: c.sender === likelyCustomer ? 'customer' as const : 'agent' as const
+  }));
+}
+
 // 使用AI识别对话中的客服和客户角色（带schema验证防止prompt injection）
 async function identifyRolesWithAI(
   conversations: Array<{ timestamp: string; sender: string; message: string }>,
@@ -147,27 +182,37 @@ async function identifyRolesWithAI(
     const sampleMessages = conversations.slice(0, Math.min(10, conversations.length))
       .map(c => `${c.sender}: ${c.message}`).join('\n');
 
-    const prompt = `分析以下WhatsApp聊天记录，识别谁是客服（销售人员），谁是客户。
+    const prompt = `你是一个专业的对话分析助手。请分析以下WhatsApp聊天记录，准确识别谁是销售人员（业务员/客服），谁是客户。
 
-客户姓名可能是：${customerName}
+【重要提示】客户的姓名可能是：${customerName}
 
-聊天记录：
+【聊天记录】
 ${sampleMessages}
 
-所有参与者：${senders.join(', ')}
+【所有参与者】${senders.join(', ')}
 
-请根据对话内容和语气，判断每个参与者的角色。客服通常：
-- 使用更专业的语言
-- 主动提问和引导
-- 介绍产品或服务
-- 使用敬语
+【角色识别规则】
 
-客户通常：
-- 提出需求和问题
-- 语气更随意
-- 询问价格、功能等
+销售人员（业务员/客服）的特征：
+- 主动推荐产品、服务、投资机会
+- 介绍公司、平台、收益率等专业信息
+- 使用"我们公司"、"我们平台"、"欢迎咨询"等话术
+- 询问客户的投资经验、资金情况
+- 发送产品链接、图片、文档
+- 使用较为正式和专业的语气
 
-请以JSON格式返回：{"客服": ["姓名1"], "客户": ["姓名2"]}`;
+客户的特征：
+- 询问产品详情、价格、收益
+- 表达疑虑、犹豫、担心风险
+- 询问"安全吗"、"靠谱吗"、"多少钱"
+- 被动回应销售人员的问题
+- 语气相对随意或谨慎
+
+【输出格式】
+请严格按照以下JSON格式返回（不要添加任何其他文字）：
+{"客服": ["销售人员的名字"], "客户": ["客户的名字"]}
+
+注意：如果${customerName}在参与者列表中，ta很可能是客户。`;
 
     const response = await fetch(process.env.AI_BASE_URL + '/v1/chat/completions', {
       method: 'POST',
@@ -185,13 +230,8 @@ ${sampleMessages}
     });
 
     if (!response.ok) {
-      console.error('AI角色识别失败，使用默认策略');
-      // 降级策略：第一个人是客服，其他是客户
-      const agentName = senders[0];
-      return conversations.map(c => ({
-        ...c,
-        role: c.sender === agentName ? 'agent' as const : 'customer' as const
-      }));
+      console.error('AI角色识别API调用失败，使用智能降级策略');
+      return fallbackRoleIdentification(conversations, senders, customerName);
     }
 
     const data = await response.json();
@@ -204,12 +244,8 @@ ${sampleMessages}
       
       // 严格验证AI响应schema，防止prompt injection
       if (!roleMapping || typeof roleMapping !== 'object') {
-        console.warn('AI返回格式无效，使用默认策略');
-        const agentName = senders[0];
-        return conversations.map(c => ({
-          ...c,
-          role: c.sender === agentName ? 'agent' as const : 'customer' as const
-        }));
+        console.warn('AI返回格式无效，使用智能降级策略');
+        return fallbackRoleIdentification(conversations, senders, customerName);
       }
       
       const agentList = roleMapping['客服'];
@@ -217,24 +253,16 @@ ${sampleMessages}
       
       // 验证返回的名单是否为数组
       if (!Array.isArray(agentList) || !Array.isArray(customerList)) {
-        console.warn('AI返回的角色列表格式无效，使用默认策略');
-        const agentName = senders[0];
-        return conversations.map(c => ({
-          ...c,
-          role: c.sender === agentName ? 'agent' as const : 'customer' as const
-        }));
+        console.warn('AI返回的角色列表格式无效，使用智能降级策略');
+        return fallbackRoleIdentification(conversations, senders, customerName);
       }
       
       // 验证所有返回的名字都在实际参与者列表中（防止injection）
       const allMentioned = [...agentList, ...customerList];
       const invalidNames = allMentioned.filter(name => !senders.includes(name));
       if (invalidNames.length > 0) {
-        console.warn('AI返回了不存在的参与者名字，可能存在prompt injection，使用默认策略');
-        const agentName = senders[0];
-        return conversations.map(c => ({
-          ...c,
-          role: c.sender === agentName ? 'agent' as const : 'customer' as const
-        }));
+        console.warn('AI返回了不存在的参与者名字，可能存在prompt injection，使用智能降级策略');
+        return fallbackRoleIdentification(conversations, senders, customerName);
       }
       
       // 验证通过，应用AI识别的角色
@@ -245,21 +273,14 @@ ${sampleMessages}
       }));
     }
 
-    // 如果AI响应解析失败，使用默认策略
-    const agentName = senders[0];
-    return conversations.map(c => ({
-      ...c,
-      role: c.sender === agentName ? 'agent' as const : 'customer' as const
-    }));
+    // 如果AI响应解析失败，使用智能降级策略
+    console.warn('AI响应JSON解析失败，使用智能降级策略');
+    return fallbackRoleIdentification(conversations, senders, customerName);
   } catch (error) {
     console.error('AI角色识别出错:', error);
     // 降级策略
     const senders = Array.from(new Set(conversations.map(c => c.sender)));
-    const agentName = senders[0];
-    return conversations.map(c => ({
-      ...c,
-      role: c.sender === agentName ? 'agent' as const : 'customer' as const
-    }));
+    return fallbackRoleIdentification(conversations, senders, customerName);
   }
 }
 
