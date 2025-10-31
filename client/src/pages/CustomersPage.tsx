@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import CustomerTag from '@/components/CustomerTag';
-import { Search, Plus, User, MessageSquare, Sparkles, TrendingUp, Ban, CheckCircle } from 'lucide-react';
+import { AiRatingButton } from '@/components/AiRatingButton';
+import { Search, Plus, User, MessageSquare, Sparkles, TrendingUp, Ban, CheckCircle, Copy, Check } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -1436,11 +1437,21 @@ export default function CustomersPage() {
                   )}
 
                   <div className="bg-muted p-4 rounded-lg">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Sparkles className="h-5 w-5 text-primary" />
-                      <h4 className="font-medium">AI 智能分析</h4>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-5 w-5 text-primary" />
+                        <h4 className="font-medium">AI 智能分析</h4>
+                      </div>
+                      {customer.aiAnalysis && (
+                        <AiRatingButton 
+                          type="analysis" 
+                          targetId={customer.id} 
+                          size="sm" 
+                          variant="ghost" 
+                        />
+                      )}
                     </div>
-                    <p className="text-sm mb-4">
+                    <p className="text-sm mb-4 whitespace-pre-wrap">
                       {customer.aiAnalysis || 'AI 将根据客户画像和对话历史，为您提供个性化的沟通建议和销售策略。'}
                     </p>
                     <Button
@@ -1456,7 +1467,31 @@ export default function CustomersPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <h4 className="font-medium">推荐话术</h4>
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-medium">推荐话术</h4>
+                      {(customer as any).recommendedScript && (
+                        <div className="flex gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              navigator.clipboard.writeText((customer as any).recommendedScript);
+                              toast({ title: "已复制到剪贴板" });
+                            }}
+                            data-testid="button-copy-script"
+                          >
+                            <Copy className="h-4 w-4 mr-1" />
+                            复制
+                          </Button>
+                          <AiRatingButton 
+                            type="script" 
+                            targetId={customer.id} 
+                            size="sm" 
+                            variant="ghost" 
+                          />
+                        </div>
+                      )}
+                    </div>
                     {(customer as any).recommendedScript ? (
                       <Card className="p-3 bg-primary/5">
                         <p className="text-sm whitespace-pre-wrap">
