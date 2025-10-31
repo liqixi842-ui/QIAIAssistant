@@ -56,7 +56,16 @@ ${hasConversations ? `- 最近对话样本（最多20条）：\n${JSON.stringify
 
 请严格按照JSON格式返回分析结果。`;
 
-    const response = await getAI().ask(prompt, PROMPTS.CUSTOMER_PROFILE);
+    // 使用更高的temperature增加输出多样性
+    const messages = [
+      { role: 'system' as const, content: PROMPTS.CUSTOMER_PROFILE },
+      { role: 'user' as const, content: prompt }
+    ];
+    const aiResponse = await getAI().chat(messages, { 
+      temperature: 0.8,  // 平衡创造性和稳定性
+      maxTokens: 3000    // 增加token限制以获取更详细的回复
+    });
+    const response = aiResponse.content;
     
     console.log('🤖 AI原始响应:', response.substring(0, 500)); // 打印前500字符
     
