@@ -214,6 +214,7 @@ export default function CustomersPage() {
   const [selectedUserId, setSelectedUserId] = useState<string>('all'); // 筛选用户ID
   const [isUploadChatOpen, setIsUploadChatOpen] = useState(false);
   const [chatText, setChatText] = useState('');
+  const [agentName, setAgentName] = useState('');
   
   // 保存队列：确保请求按顺序执行
   const saveQueueRef = useRef<Promise<any>>(Promise.resolve());
@@ -522,8 +523,8 @@ export default function CustomersPage() {
 
   // 上传聊天记录
   const uploadChatMutation = useMutation({
-    mutationFn: async ({ id, chatText }: { id: string; chatText: string }) => {
-      return await apiRequest('POST', `/api/customers/${id}/upload-chat`, { chatText });
+    mutationFn: async ({ id, chatText, agentName }: { id: string; chatText: string; agentName: string }) => {
+      return await apiRequest('POST', `/api/customers/${id}/upload-chat`, { chatText, agentName });
     },
     onSuccess: (response: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/customers'] });
@@ -541,6 +542,7 @@ export default function CustomersPage() {
       // 关闭对话框并清空输入
       setIsUploadChatOpen(false);
       setChatText('');
+      setAgentName('');
     },
     onError: (error: Error) => {
       toast({
@@ -608,9 +610,19 @@ export default function CustomersPage() {
       return;
     }
     
+    if (!agentName.trim()) {
+      toast({
+        title: "提示",
+        description: "请输入业务员姓名（您在聊天记录中的名字）",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     uploadChatMutation.mutate({
       id: selectedCustomer.id,
-      chatText: chatText
+      chatText: chatText,
+      agentName: agentName.trim()
     });
   };
 
@@ -1222,6 +1234,20 @@ export default function CustomersPage() {
                           </div>
                           
                           <div>
+                            <Label className="text-sm font-medium">业务员姓名（必填）</Label>
+                            <Input
+                              placeholder="请输入您的名字（在聊天记录中显示的名字）"
+                              value={agentName}
+                              onChange={(e) => setAgentName(e.target.value)}
+                              className="mt-1"
+                              data-testid="input-agent-name"
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">
+                              填写您在WhatsApp中显示的名字，系统会自动识别您和客户的消息
+                            </p>
+                          </div>
+                          
+                          <div>
                             <div className="flex items-center justify-between mb-2">
                               <Label>粘贴聊天记录或上传文件</Label>
                               <div>
@@ -1259,6 +1285,7 @@ export default function CustomersPage() {
                               onClick={() => {
                                 setIsUploadChatOpen(false);
                                 setChatText('');
+                                setAgentName('');
                               }}
                               data-testid="button-cancel-upload"
                             >
@@ -1266,7 +1293,7 @@ export default function CustomersPage() {
                             </Button>
                             <Button
                               onClick={handleUploadChat}
-                              disabled={uploadChatMutation.isPending || !chatText.trim()}
+                              disabled={uploadChatMutation.isPending || !chatText.trim() || !agentName.trim()}
                               data-testid="button-confirm-upload"
                             >
                               {uploadChatMutation.isPending ? '导入中...' : '导入'}

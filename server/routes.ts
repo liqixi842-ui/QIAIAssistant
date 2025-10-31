@@ -1640,7 +1640,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/customers/:id/upload-chat", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
-      const { chatText } = req.body;
+      const { chatText, agentName } = req.body;
 
       if (!chatText || typeof chatText !== 'string') {
         return res.status(400).json({ error: "请提供聊天记录文本" });
@@ -1659,8 +1659,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "无法解析聊天记录，请确保格式正确" });
       }
 
-      // 使用AI分析并识别客服和客户
-      const analyzedConversations = await identifyRolesWithAI(conversations, customer.name || '客户');
+      let analyzedConversations;
+      
+      // 如果用户提供了业务员名字，直接根据名字分配角色
+      if (agentName && typeof agentName === 'string' && agentName.trim()) {
+        console.log(`📝 用户指定业务员名字: "${agentName.trim()}"`);
+        
+        const trimmedAgentName = agentName.trim();
+        analyzedConversations = conversations.map(c => ({
+          ...c,
+          role: c.sender.trim() === trimmedAgentName ? 'agent' as const : 'customer' as const
+        }));
+        
+        console.log(`✅ 根据用户指定直接分配角色完成`);
+      } else {
+        // 没有提供业务员名字，使用AI识别（向后兼容）
+        console.log(`🤖 未提供业务员名字，使用AI识别角色`);
+        analyzedConversations = await identifyRolesWithAI(conversations, customer.name || '客户');
+      }
 
       // 更新客户的聊天记录
       const updatedCustomer = await storage.updateCustomer(id, {
