@@ -30,6 +30,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import ObjectUploader from '@/components/ObjectUploader';
+import { AiRatingButton } from '@/components/AiRatingButton';
 
 interface Script {
   id: string;
@@ -440,6 +441,8 @@ export default function ScriptsPage() {
 
   const [isCustomerSelectOpen, setIsCustomerSelectOpen] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
+  const [selectedScript, setSelectedScript] = useState<Script | null>(null);
+  const [isScriptDetailOpen, setIsScriptDetailOpen] = useState(false);
 
   // 获取客户列表
   const { data: customersData } = useQuery<{ data: any[] }>({
@@ -730,6 +733,18 @@ export default function ScriptsPage() {
                 </p>
                 <div className="flex items-center justify-between">
                   <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedScript(script);
+                        setIsScriptDetailOpen(true);
+                      }}
+                      data-testid={`button-view-${script.id}`}
+                    >
+                      <Eye className="h-4 w-4 mr-1" />
+                      查看详情
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -1151,6 +1166,50 @@ export default function ScriptsPage() {
               生成话术
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 话术详情对话框 */}
+      <Dialog open={isScriptDetailOpen} onOpenChange={setIsScriptDetailOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <DialogTitle>{selectedScript?.title}</DialogTitle>
+                {selectedScript?.isAIGenerated === 1 && (
+                  <Sparkles className="h-5 w-5 text-primary" />
+                )}
+              </div>
+              <Badge variant="secondary">{selectedScript?.stage || '通用'}</Badge>
+            </div>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="p-4 bg-muted rounded-lg max-h-96 overflow-y-auto">
+              <p className="text-sm whitespace-pre-wrap">{selectedScript?.content}</p>
+            </div>
+            <div className="flex items-center justify-between pt-2 border-t">
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => selectedScript && handleCopy(selectedScript.content)}
+                  data-testid="button-copy-detail"
+                >
+                  <Copy className="h-4 w-4 mr-2" />
+                  复制话术
+                </Button>
+              </div>
+              {selectedScript?.isAIGenerated === 1 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">为AI话术评分：</span>
+                  <AiRatingButton
+                    type="script"
+                    targetId={selectedScript.id}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
