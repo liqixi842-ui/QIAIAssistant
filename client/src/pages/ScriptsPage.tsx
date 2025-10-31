@@ -438,14 +438,57 @@ export default function ScriptsPage() {
     });
   };
 
+  const [isCustomerSelectOpen, setIsCustomerSelectOpen] = useState(false);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
+
+  // 获取客户列表
+  const { data: customersData } = useQuery<{ data: any[] }>({
+    queryKey: ['/api/customers'],
+  });
+
+  const customers = customersData?.data || [];
+
   const handleAIGenerate = () => {
+    // 打开客户选择对话框
+    setIsCustomerSelectOpen(true);
+  };
+
+  const handleCustomerSelect = () => {
+    if (!selectedCustomerId) {
+      toast({
+        title: "请选择客户",
+        description: "需要选择一个客户才能生成个性化话术",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const selectedCustomer = customers.find((c: any) => c.id === selectedCustomerId);
+    if (!selectedCustomer) {
+      toast({
+        title: "客户不存在",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsGenerating(true);
-    // 使用示例客户上下文进行AI生成
+    setIsCustomerSelectOpen(false);
+
+    // 使用真实客户数据
     const customerContext = {
-      name: '示例客户',
-      stage: newScript.stage || '初次接触',
-      tags: []
+      name: selectedCustomer.name,
+      age: selectedCustomer.age,
+      location: selectedCustomer.location,
+      phone: selectedCustomer.phone,
+      assets: selectedCustomer.assets,
+      interests: selectedCustomer.interests,
+      stage: selectedCustomer.stage || '初次接触',
+      tags: selectedCustomer.tags || [],
+      conversations: selectedCustomer.conversations || [],
+      status: selectedCustomer.status
     };
+
     generateScriptMutation.mutate(customerContext);
   };
 
@@ -1044,6 +1087,70 @@ export default function ScriptsPage() {
               </div>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 客户选择对话框 */}
+      <Dialog open={isCustomerSelectOpen} onOpenChange={setIsCustomerSelectOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>选择客户生成个性化话术</DialogTitle>
+            <DialogDescription>
+              请选择一个客户，AI 将根据该客户的具体信息生成个性化话术
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>选择客户</Label>
+              <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
+                <SelectTrigger data-testid="select-customer">
+                  <SelectValue placeholder="请选择客户..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {customers.map((customer: any) => (
+                    <SelectItem key={customer.id} value={customer.id}>
+                      {customer.name || customer.phone} - {customer.stage || '初次接触'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {selectedCustomerId && (
+              <div className="p-4 bg-muted rounded-lg space-y-2">
+                <p className="text-sm font-medium">客户信息预览：</p>
+                {(() => {
+                  const customer = customers.find((c: any) => c.id === selectedCustomerId);
+                  if (!customer) return null;
+                  return (
+                    <div className="text-sm text-muted-foreground space-y-1">
+                      <p>• 姓名：{customer.name || '未填写'}</p>
+                      <p>• 年龄：{customer.age || '未填写'}</p>
+                      <p>• 地点：{customer.location || '未填写'}</p>
+                      <p>• 阶段：{customer.stage || '初次接触'}</p>
+                      <p>• 对话次数：{customer.conversations?.length || 0}次</p>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsCustomerSelectOpen(false)}
+              data-testid="button-cancel-select"
+            >
+              取消
+            </Button>
+            <Button
+              onClick={handleCustomerSelect}
+              disabled={!selectedCustomerId}
+              data-testid="button-confirm-select"
+            >
+              <Sparkles className="h-4 w-4 mr-2" />
+              生成话术
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
