@@ -62,9 +62,10 @@ function parseWhatsAppChat(chatText: string): Array<{
       continue;
     }
     
-    // 匹配格式: [D/M/YY HH:MM:SS] 或 [DD/MM/YY HH:MM:SS]
+    // 匹配格式: [D/M/YY HH:MM:SS] Sender: Message 或 [DD/MM/YY HH:MM:SS] Sender - Message
     // 支持单个或双个数字的日期和月份
-    const match = trimmedLine.match(/^\[(\d{1,2}\/\d{1,2}\/\d{2}\s+\d{2}:\d{2}:\d{2})\]\s+([^:]+):\s*(.*)$/);
+    // 连字符作为分隔符时必须前后有空格（避免误判名字中的连字符），冒号可以直接跟在名字后
+    const match = trimmedLine.match(/^\[(\d{1,2}\/\d{1,2}\/\d{2}\s+\d{2}:\d{2}:\d{2})\]\s+(.+?)(?:\s+-\s+|:\s*)(.*)$/);
     
     if (match) {
       // 如果有当前消息，先保存
