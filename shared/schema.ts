@@ -279,3 +279,27 @@ export const insertScriptSchema = createInsertSchema(scripts).omit({
 
 export type InsertScript = z.infer<typeof insertScriptSchema>;
 export type Script = typeof scripts.$inferSelect;
+
+// AI反馈表 - 用于AI学习和改进
+export const aiFeedbacks = pgTable("ai_feedbacks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  type: text("type").notNull(), // 反馈类型：analysis（客户分析）、script（话术）、task（任务）
+  targetId: varchar("target_id").notNull(), // 目标对象ID（客户ID、话术ID、任务ID等）
+  rating: integer("rating").notNull(), // 评分：1-5星
+  feedback: text("feedback"), // 文字反馈（可选）
+  createdBy: varchar("created_by").notNull(), // 创建者ID
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`), // 创建时间
+});
+
+export const insertAiFeedbackSchema = createInsertSchema(aiFeedbacks).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  rating: z.number().min(1, "评分最低1星").max(5, "评分最高5星"),
+  type: z.enum(["analysis", "script", "task"], {
+    errorMap: () => ({ message: "反馈类型必须是 analysis、script 或 task" })
+  })
+});
+
+export type InsertAiFeedback = z.infer<typeof insertAiFeedbackSchema>;
+export type AiFeedback = typeof aiFeedbacks.$inferSelect;

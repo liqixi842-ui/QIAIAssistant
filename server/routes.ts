@@ -3377,6 +3377,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============================================
+  // AI反馈 API - 用于AI学习和改进
+  // ============================================
+  
+  // POST /api/ai-feedback - 提交AI反馈评分
+  app.post("/api/ai-feedback", requireAuth, async (req, res) => {
+    try {
+      const user = getCurrentUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "未登录" });
+      }
+      
+      const feedbackData = {
+        ...req.body,
+        createdBy: user.id
+      };
+      
+      // Zod验证
+      const { insertAiFeedbackSchema } = await import("@shared/schema");
+      const validated = insertAiFeedbackSchema.parse(feedbackData);
+      
+      const feedback = await storage.createAiFeedback(validated);
+      
+      res.json({ 
+        success: true, 
+        data: feedback,
+        message: "反馈提交成功" 
+      });
+    } catch (error: any) {
+      console.error('提交AI反馈失败:', error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: "数据验证失败", details: error.errors });
+      }
+      res.status(500).json({ error: "提交反馈失败", details: error.message });
+    }
+  });
+  
+  // GET /api/ai-feedback - 获取AI反馈列表
+  app.get("/api/ai-feedback", requireAuth, async (req, res) => {
+    try {
+      const { type, targetId, limit } = req.query;
+      
+      const filters: any = {};
+      if (type) filters.type = type as string;
+      if (targetId) filters.targetId = targetId as string;
+      if (limit) filters.limit = parseInt(limit as string);
+      
+      const feedbacks = await storage.getAiFeedbacks(filters);
+      
+      res.json({ success: true, data: feedbacks });
+    } catch (error: any) {
+      console.error('获取AI反馈失败:', error);
+      res.status(500).json({ error: "获取反馈失败", details: error.message });
+    }
+  });
+  
+  // GET /api/ai-feedback/stats - 获取AI反馈统计
+  app.get("/api/ai-feedback/stats", requireAuth, async (req, res) => {
+    try {
+      const { type } = req.query;
+      
+      const stats = await storage.getAiFeedbackStats(type as string);
+      
+      res.json({ success: true, data: stats });
+    } catch (error: any) {
+      console.error('获取AI反馈统计失败:', error);
+      res.status(500).json({ error: "获取统计失败", details: error.message });
+    }
+  });
+
+  // ============================================
   // 对象存储 API（Reference: blueprint:javascript_object_storage）
   // ============================================
   

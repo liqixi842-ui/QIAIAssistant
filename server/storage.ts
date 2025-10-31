@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type Customer, type InsertCustomer, type Task, type InsertTask, type ChatMessage, type InsertChatMessage, type Chat, type InsertChat, type ChatParticipant, type InsertChatParticipant, type LearningMaterial, type InsertLearningMaterial, type ScriptCategory, type InsertScriptCategory, type AuditLog, type InsertAuditLog, type Feedback, type InsertFeedback, type Script, type InsertScript, users, customers, tasks, chatMessages, chats, chatParticipants, learningMaterials, scriptCategories, auditLogs, feedbacks, scripts } from "@shared/schema";
+import { type User, type InsertUser, type Customer, type InsertCustomer, type Task, type InsertTask, type ChatMessage, type InsertChatMessage, type Chat, type InsertChat, type ChatParticipant, type InsertChatParticipant, type LearningMaterial, type InsertLearningMaterial, type ScriptCategory, type InsertScriptCategory, type AuditLog, type InsertAuditLog, type Feedback, type InsertFeedback, type Script, type InsertScript, type AiFeedback, type InsertAiFeedback, users, customers, tasks, chatMessages, chats, chatParticipants, learningMaterials, scriptCategories, auditLogs, feedbacks, scripts, aiFeedbacks } from "@shared/schema";
 import { db } from "./db";
 import { eq, inArray, or, sql, desc, and, like, ilike } from "drizzle-orm";
 
@@ -103,6 +103,11 @@ export interface IStorage {
     activeCustomersChange: number;
   }>;
   getTodayTasks(userId: string): Promise<Array<Task & { customer?: Customer }>>;
+  
+  // AI Feedback methods
+  createAiFeedback(feedback: InsertAiFeedback): Promise<AiFeedback>;
+  getAiFeedbacks(filters?: { type?: string; targetId?: string; createdBy?: string; limit?: number }): Promise<AiFeedback[]>;
+  getAiFeedbackStats(type?: string): Promise<{ avgRating: number; totalCount: number; ratingDistribution: Record<number, number> }>;
 }
 
 export class PostgresStorage implements IStorage {
@@ -925,6 +930,68 @@ export class PostgresStorage implements IStorage {
       .where(and(...conditions.filter(Boolean)))
       .orderBy(desc(scripts.createdAt))
       .limit(50);
+  }
+  
+  // ============================================
+  // AI Feedback methods
+  // ============================================
+  
+  async createAiFeedback(feedback: InsertAiFeedback): Promise<AiFeedback> {
+    const result = await db.insert(aiFeedbacks).values(feedback).returning();
+    return result[0];
+  }
+  
+  async getAiFeedbacks(filters?: { type?: string; targetId?: string; createdBy?: string; limit?: number }): Promise<AiFeedback[]> {
+    const conditions = [];
+    
+    if (filters?.type) {
+      conditions.push(eq(aiFeedbacks.type, filters.type));
+    }
+    if (filters?.targetId) {
+      conditions.push(eq(aiFeedbacks.targetId, filters.targetId));
+    }
+    if (filters?.createdBy) {
+      conditions.push(eq(aiFeedbacks.createdBy, filters.createdBy));
+    }
+    
+    let query = db.select()
+      .from(aiFeedbacks)
+      .orderBy(desc(aiFeedbacks.createdAt));
+    
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as any;
+    }
+    
+    if (filters?.limit) {
+      query = query.limit(filters.limit) as any;
+    }
+    
+    return await query;
+  }
+  
+  async getAiFeedbackStats(type?: string): Promise<{ avgRating: number; totalCount: number; ratingDistribution: Record<number, number> }> {
+    const conditions = type ? [eq(aiFeedbacks.type, type)] : [];
+    
+    let query = db.select()
+      .from(aiFeedbacks);
+    
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as any;
+    }
+    
+    const feedbacks = await query;
+    
+    const totalCount = feedbacks.length;
+    const avgRating = totalCount > 0 
+      ? feedbacks.reduce((sum, f) => sum + f.rating, 0) / totalCount 
+      : 0;
+    
+    const ratingDistribution: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    feedbacks.forEach(f => {
+      ratingDistribution[f.rating] = (ratingDistribution[f.rating] || 0) + 1;
+    });
+    
+    return { avgRating, totalCount, ratingDistribution };
   }
 }
 
