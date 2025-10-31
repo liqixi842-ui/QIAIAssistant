@@ -35,6 +35,32 @@ export async function analyzeCustomerProfile(customerData: any) {
         }))
       : [];
     
+    // 获取优秀销售对话案例（从学习资料中的"对话记录"类别）
+    let bestPracticeConversations = '';
+    try {
+      const { storage } = await import('../storage');
+      const materials = await storage.getAllLearningMaterials();
+      const categories = await storage.getAllScriptCategories();
+      
+      // 找到"对话记录"类别的ID
+      const conversationCategory = categories.find(c => c.name === '对话记录' || c.name.includes('对话'));
+      
+      if (conversationCategory) {
+        // 获取该类别下的学习资料
+        const conversationMaterials = materials.filter(m => m.categoryId === conversationCategory.id);
+        
+        if (conversationMaterials.length > 0) {
+          bestPracticeConversations = '\n\n📚 优秀销售对话案例（供学习参考）：\n';
+          conversationMaterials.slice(0, 5).forEach(m => {  // 最多5个案例标题
+            bestPracticeConversations += `  - ${m.title}\n`;
+          });
+          bestPracticeConversations += '\n💡 这些是团队中优秀销售员的成功案例。请学习其中的沟通技巧和话术风格，根据当前客户的实际情况生成个性化建议，不要照搬通用模板。';
+        }
+      }
+    } catch (error) {
+      console.error('获取优秀对话案例失败:', error);
+    }
+    
     const prompt = `请分析以下客户信息：
 
 【客户基本资料】
@@ -47,12 +73,14 @@ ${JSON.stringify({
 - 总对话数：${conversationCount}条
 - 是否有对话历史：${hasConversations ? '是' : '否'}
 ${hasConversations ? `- 最近对话样本（最多20条）：\n${JSON.stringify(recentConversations, null, 2)}` : ''}
+${bestPracticeConversations}
 
 【重要提示】
 1. 如果客户有大量对话记录（>50条），说明互动频繁，粘度高，应该给予积极评价
 2. 如果客户状态为"已成交"，说明转化成功，应该重点关注后续维护和复购机会
 3. 请根据实际的对话内容和数量来评估粘度，而不是使用通用模板
 4. 对话记录越多，说明客户越活跃，成交概率越高
+5. 学习上面提供的优秀销售对话案例中的技巧，但必须根据当前客户实际情况调整，生成个性化建议
 
 请严格按照JSON格式返回分析结果。`;
 
