@@ -135,22 +135,23 @@ export default function TasksPage() {
     return true;
   });
 
-  // AI生成随机任务（不需要选择客户）
+  // AI智能生成跟进任务（自动分析所有客户）
   const generateTaskMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest('POST', '/api/tasks/auto-generate-random', {});
+      return apiRequest('POST', '/api/tasks/auto-generate-from-customers', {});
     },
-    onSuccess: () => {
+    onSuccess: (response: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/tasks'] });
+      const count = response.data?.count || 0;
       toast({
-        title: "成功",
-        description: "AI已生成一个随机客户场景任务",
+        title: "智能分析完成",
+        description: `AI已为${count}个需要跟进的客户生成任务`,
       });
     },
     onError: () => {
       toast({
         title: "失败",
-        description: "AI生成任务失败，请重试",
+        description: "AI分析失败，请重试",
         variant: "destructive",
       });
     },
@@ -238,7 +239,7 @@ export default function TasksPage() {
             data-testid="button-add-task"
           >
             <Sparkles className="h-4 w-4 mr-2" />
-            {generateTaskMutation.isPending ? '生成中...' : 'AI生成随机任务'}
+            {generateTaskMutation.isPending ? '智能分析中...' : '智能生成跟进任务'}
           </Button>
         </div>
       </div>
@@ -246,7 +247,7 @@ export default function TasksPage() {
       {tasks.length === 0 ? (
         <Card className="p-12 text-center">
           <p className="text-muted-foreground">暂无任务</p>
-          <p className="text-sm text-muted-foreground mt-2">点击"AI生成任务"创建第一个任务</p>
+          <p className="text-sm text-muted-foreground mt-2">点击"智能生成跟进任务"让AI自动分析客户并创建任务</p>
         </Card>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

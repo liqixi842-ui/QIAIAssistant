@@ -1896,7 +1896,89 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   /**
-   * AI生成随机客户场景任务
+   * AI智能生成跟进任务（从真实客户中分析）
+   * POST /api/tasks/auto-generate-from-customers
+   */
+  app.post("/api/tasks/auto-generate-from-customers", requireAuth, async (req, res) => {
+    try {
+      const user = getCurrentUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "未登录" });
+      }
+
+      // 获取用户有权访问的所有客户
+      const customers = await storage.getCustomersByUser(user.id, user.role);
+      
+      if (customers.length === 0) {
+        return res.json({ 
+          success: true, 
+          data: { count: 0 },
+          message: "暂无客户数据"
+        });
+      }
+
+      // 导入generateTask函数
+      const { generateTask } = await import('./ai/agents.js');
+      
+      let generatedCount = 0;
+      const tasks = [];
+
+      // 为每个客户分析是否需要跟进
+      for (const customer of customers) {
+        try {
+          // 跳过已封锁的客户
+          if (customer.blocked === 1) {
+            continue;
+          }
+
+          // 使用AI分析客户并生成任务
+          const aiTaskData = await generateTask(customer, customer.stage || '初次接触');
+
+          // 创建任务
+          const taskData = {
+            customerId: customer.id,
+            title: aiTaskData.title || `【跟进${customer.name}】${customer.stage || '初次接触'}`,
+            description: aiTaskData.description || '',
+            guidanceSteps: aiTaskData.guidanceSteps || [],
+            script: aiTaskData.script || '',
+            priority: aiTaskData.priority || 'medium',
+            status: 'pending' as const,
+            createdBy: user.id,
+            assignedAgentId: customer.createdBy || user.id,
+            dueAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString() // 2天后
+          };
+
+          const task = await storage.createTask(taskData);
+          tasks.push(task);
+          generatedCount++;
+
+          // 限制每次最多生成10个任务，避免AI调用过多
+          if (generatedCount >= 10) {
+            break;
+          }
+        } catch (error) {
+          console.error(`为客户 ${customer.name || customer.id} 生成任务失败:`, error);
+          // 继续处理下一个客户
+          continue;
+        }
+      }
+
+      res.json({ 
+        success: true, 
+        data: { 
+          count: generatedCount,
+          tasks
+        },
+        message: `成功为${generatedCount}个客户生成跟进任务`
+      });
+    } catch (error) {
+      console.error('智能任务生成失败:', error);
+      res.status(500).json({ error: "智能任务生成失败" });
+    }
+  });
+
+  /**
+   * AI生成随机客户场景任务（练习用）
    * POST /api/tasks/auto-generate-random
    */
   app.post("/api/tasks/auto-generate-random", requireAuth, async (req, res) => {
