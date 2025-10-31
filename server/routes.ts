@@ -40,9 +40,10 @@ function parseWhatsAppChat(chatText: string): Array<{
     message: string;
   }> = [];
 
-  // 支持真实WhatsApp导出格式：
-  // [11/9/25 17:57:02] Bea: Vale, el lunes me pondré en contacto contigo
-  // [26/10/25 06:41:30] Lisa: 你在干嘛
+  // 支持多种WhatsApp导出格式：
+  // 格式1: [11/9/25 17:57:02] Bea: Vale, el lunes me pondré en contacto contigo
+  // 格式2: [26/10/25 06:41:30] Lisa: 你在干嘛
+  // 格式3: [2025-10-26 15:43:16] Sophie Miller: That's sweet
   // 注意：日期和月份可能是单个或两个数字
   
   // 统一处理不同的换行符格式和移除零宽字符
@@ -62,10 +63,10 @@ function parseWhatsAppChat(chatText: string): Array<{
       continue;
     }
     
-    // 匹配格式: [D/M/YY HH:MM:SS] Sender: Message 或 [DD/MM/YY HH:MM:SS] Sender - Message
-    // 支持单个或双个数字的日期和月份
-    // 连字符作为分隔符时必须前后有空格（避免误判名字中的连字符），冒号可以直接跟在名字后
-    const match = trimmedLine.match(/^\[(\d{1,2}\/\d{1,2}\/\d{2}\s+\d{2}:\d{2}:\d{2})\]\s+(.+?)(?:\s+-\s+|:\s*)(.*)$/);
+    // 匹配格式1和2: [D/M/YY HH:MM:SS] Sender: Message 或 [DD/MM/YY HH:MM:SS] Sender - Message
+    // 匹配格式3: [YYYY-MM-DD HH:MM:SS] Sender: Message
+    // 支持单个或双个数字的日期和月份，以及4位年份
+    const match = trimmedLine.match(/^\[(\d{1,2}\/\d{1,2}\/\d{2}\s+\d{2}:\d{2}:\d{2}|\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\]\s+(.+?)(?:\s+-\s+|:\s*)(.*)$/);
     
     if (match) {
       // 如果有当前消息，先保存
@@ -75,18 +76,23 @@ function parseWhatsAppChat(chatText: string): Array<{
 
       const [, timestamp, sender, message] = match;
       
-      // 过滤系统消息和附件消息
+      // 过滤系统消息和附件消息（支持简体和繁体中文）
       const systemMessagePatterns = [
         '消息和通话已进行端到端加密',
+        '訊息與通話已受端對端加密保護',
         '已成为联系人',
+        '已是聯絡人',
         '音频已忽略',
         '图像已忽略',
+        '圖像已省略',
         '视频已忽略',
         '文件已忽略',
         '语音通话',
         '未接语音通话',
         '未接听',
         '轻触回拨',
+        '使用限時訊息',
+        '預設時限',
         '<附件：',
         '<这条消息已经过编辑>',
         '‎' // 零宽字符开头的消息
