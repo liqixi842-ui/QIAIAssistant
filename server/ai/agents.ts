@@ -154,11 +154,38 @@ ${JSON.stringify(conversations, null, 2)}
  */
 export async function generateSalesScript(customerProfile: any, stage: string) {
   try {
-    // 提取客户关键信息
-    const customerName = customerProfile.name || '客户';
-    const customerAge = customerProfile.age || '';
-    const customerLocation = customerProfile.location || '';
-    const conversationCount = customerProfile.conversations?.length || 0;
+    // 构建标准化的客户数据摘要，确保至少包含3个具体属性
+    const customerData = {
+      name: customerProfile.name || customerProfile.phone || '客户',
+      age: customerProfile.age,
+      location: customerProfile.location,
+      phone: customerProfile.phone,
+      assets: customerProfile.assets,
+      interests: customerProfile.interests,
+      stage: customerProfile.stage || stage,
+      tags: customerProfile.tags || [],
+      conversationCount: customerProfile.conversations?.length || 0,
+      status: customerProfile.status
+    };
+    
+    // 过滤掉undefined字段，只保留有效数据
+    const validFields = Object.entries(customerData)
+      .filter(([_, value]) => value !== undefined && value !== null && value !== '')
+      .map(([key, value]) => `  - ${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`)
+      .join('\n');
+    
+    // 验证至少有3个有效字段（排除conversationCount因为它总是存在）
+    const nonTrivialFields = Object.entries(customerData)
+      .filter(([key, value]) => 
+        key !== 'conversationCount' && 
+        value !== undefined && 
+        value !== null && 
+        value !== ''
+      ).length;
+    
+    if (nonTrivialFields < 2) {
+      console.warn('⚠️ 客户数据不足，可能影响个性化质量');
+    }
     
     // 获取知识库信息（尤其是优秀对话案例）
     let knowledgeContext = '';
@@ -190,7 +217,7 @@ export async function generateSalesScript(customerProfile: any, stage: string) {
         knowledgeContext += '- 学习这些资料中的沟通技巧和话术风格\n';
         knowledgeContext += '- 必须根据当前客户的实际情况调整话术\n';
         knowledgeContext += '- 禁止直接复制学习资料的内容\n';
-        knowledgeContext += '- 要在话术中引用客户的具体数据（年龄、地点、对话次数等）';
+        knowledgeContext += '- 要在话术中引用客户的具体数据（见下方客户数据）';
       }
     } catch (error) {
       console.error('获取知识库失败:', error);
@@ -199,20 +226,18 @@ export async function generateSalesScript(customerProfile: any, stage: string) {
 
     const prompt = `请为以下客户生成个性化销售话术：
 
-客户画像：
-${JSON.stringify(customerProfile, null, 2)}
+【客户关键数据 - 必须在话术中引用】
+${validFields}
 
 当前阶段：${stage}
 ${knowledgeContext}
 
-【个性化要求】
-1. 话术开头必须称呼客户姓名："${customerName}"
-2. 必须引用客户的真实数据，例如：
-   - 年龄：${customerAge || '未知'}
-   - 地点：${customerLocation || '未知'}
-   - 对话次数：${conversationCount}次
-3. 根据客户的实际情况调整话术内容，不要使用通用模板
-4. 学习上面学习资料中的沟通风格，但要针对当前客户调整
+【强制个性化要求】
+1. 话术开头必须称呼客户姓名或称谓
+2. 必须在话术中明确引用至少3个上述客户数据字段
+3. 不得使用"尊敬的客户"等通用称呼
+4. 如果有对话历史（conversationCount > 0），必须体现连续性
+5. 根据客户的实际情况调整话术内容，禁止使用通用模板
 
 请严格按照JSON格式返回话术。`;
 
@@ -313,30 +338,58 @@ ${JSON.stringify(analysisResults.risk || {}, null, 2)}
  */
 export async function generateTask(customerData: any, stage: string) {
   try {
-    // 提取客户关键信息用于个性化
-    const customerName = customerData.name || `电话${customerData.phone}`;
-    const customerAge = customerData.age || '年龄未知';
-    const customerLocation = customerData.location || '地址未知';
-    const conversationCount = customerData.conversations?.length || 0;
+    // 构建标准化的客户数据摘要
+    const normalizedData = {
+      name: customerData.name || customerData.phone || '未命名客户',
+      age: customerData.age,
+      location: customerData.location,
+      phone: customerData.phone,
+      assets: customerData.assets,
+      interests: customerData.interests,
+      stage: customerData.stage || stage,
+      tags: customerData.tags || [],
+      conversationCount: customerData.conversations?.length || 0,
+      status: customerData.status
+    };
+    
+    // 过滤掉undefined字段，构建清晰的数据列表
+    const validFields = Object.entries(normalizedData)
+      .filter(([_, value]) => value !== undefined && value !== null && value !== '')
+      .map(([key, value]) => `  - ${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`)
+      .join('\n');
+    
+    // 验证数据完整性
+    const nonTrivialFields = Object.entries(normalizedData)
+      .filter(([key, value]) => 
+        key !== 'conversationCount' && 
+        value !== undefined && 
+        value !== null && 
+        value !== ''
+      ).length;
+    
+    if (nonTrivialFields < 2) {
+      console.warn('⚠️ 客户数据不足，可能影响任务个性化质量');
+    }
     
     const prompt = `请为以下客户生成跟进任务：
 
-客户信息：
-${JSON.stringify(customerData, null, 2)}
+【客户关键数据 - 必须在任务中引用】
+${validFields}
 
 当前阶段：${stage}
 
-【重要要求】
-1. 任务标题必须包含客户姓名和关键特征，格式示例：
-   - "【跟进${customerName}】${customerAge}岁${customerLocation}客户 - 激发ESG投资意向"
-   - "【电话回访${customerName}】高净值客户 - 推荐蓝筹股组合"
+【强制个性化要求】
+1. 任务标题必须包含客户姓名和关键特征
+   格式：【跟进{姓名}】{年龄}岁{地点}客户 - {具体目标}
+   如果缺少某些字段，使用已有字段替代
    
-2. 任务描述必须包含客户的具体数据，例如：
-   - "根据${customerName}的${customerAge}岁年龄和${customerLocation}的地理位置..."
-   - "该客户已有${conversationCount}次对话互动，显示出..."
+2. 任务描述必须包含至少3个上述客户数据字段的具体值
    
-3. 完成步骤和话术必须引用客户的实际信息，不要使用通用模板
-4. 每个步骤都要体现针对这个特定客户的策略
+3. 每个步骤的话术必须称呼客户姓名，引用客户实际数据
+   
+4. 不得使用"尊敬的客户"等通用称呼或模板
+   
+5. 如果有对话历史（conversationCount > 0），必须体现连续性
 
 请严格按照JSON格式返回任务信息。`;
 
