@@ -40,12 +40,16 @@ function parseWhatsAppChat(chatText: string): Array<{
     message: string;
   }> = [];
 
-  // 支持多种WhatsApp导出格式：
-  // 格式1: [11/9/25 17:57:02] Bea: Vale, el lunes me pondré en contacto contigo
-  // 格式2: [26/10/25 06:41:30] Lisa: 你在干嘛
-  // 格式3: [2025-10-26 15:43:16] Sophie Miller: That's sweet
-  // 格式4: [3:06 PM, 11/2/2025] 11/2/AI/美国75/Basil Choulagh: Hi译文 : 你好
-  // 注意：日期和月份可能是单个或两个数字
+  // 支持多种WhatsApp导出格式（全面兼容）：
+  // 格式1: [11/9/25 17:57:02] Bea: Message（24小时制，YY年）
+  // 格式2: [26/10/25 06:41:30] Lisa - Message（24小时制，破折号分隔）
+  // 格式3: [2025-10-26 15:43:16] Sophie Miller: Message（ISO日期格式）
+  // 格式4: [3:06 PM, 11/2/2025] 11/2/AI/美国75/Basil: Hi译文 : 你好（12小时AM/PM，带前缀）
+  // 格式5: [12:44, 11/2/2025] 美国9A/11/2/~Benjamin: Hello译文 : 你好（24小时制，带~前缀）
+  // 特殊处理：
+  // - 自动移除发送者前缀（如 11/2/AI/美国75/ 或 美国9A/11/2/）
+  // - 自动移除 ~ 符号
+  // - 自动移除"译文 : xxx"和"原文 : xxx"部分
   
   // 统一处理不同的换行符格式和移除零宽字符
   const cleanText = chatText
@@ -70,16 +74,25 @@ function parseWhatsAppChat(chatText: string): Array<{
     let sender = '';
     let message = '';
     
-    // 格式4: [3:06 PM, 11/2/2025] Sender: Message（12小时制AM/PM格式）
-    const format4Match = trimmedLine.match(/^\[(\d{1,2}:\d{2}\s+(?:AM|PM|am|pm)),\s+(\d{1,2}\/\d{1,2}\/\d{4})\]\s+(.+?):\s*(.*)$/);
+    // 格式4&5: [时间, 日期] Sender: Message（逗号分隔的新格式）
+    // 支持 12小时制 [3:06 PM, 11/2/2025] 和 24小时制 [12:44, 11/2/2025]
+    const newFormatMatch = trimmedLine.match(/^\[(\d{1,2}:\d{2}(?:\s+(?:AM|PM|am|pm))?),\s+(\d{1,2}\/\d{1,2}\/\d{4})\]\s+(.+?):\s*(.*)$/);
     
-    if (format4Match) {
-      const [, time, date, senderRaw, msg] = format4Match;
+    if (newFormatMatch) {
+      const [, time, date, senderRaw, msg] = newFormatMatch;
       timestamp = `${date} ${time}`;
-      // 清理发送者名称：移除可能的前缀（如 "11/2/AI/美国75/"）
-      sender = senderRaw.split('/').pop()?.trim() || senderRaw.trim();
-      // 移除"译文 : xxx"部分，只保留原始消息
-      message = msg.replace(/译文\s*[:：]\s*.+$/, '').trim();
+      
+      // 清理发送者名称：
+      // 1. 移除前缀（如 "11/2/AI/美国75/" 或 "美国9A/11/2/"）
+      // 2. 移除 ~ 符号
+      sender = senderRaw.split('/').pop()?.trim().replace(/^~/, '') || senderRaw.trim().replace(/^~/, '');
+      
+      // 移除"译文 : xxx"和"原文 : xxx"部分，只保留原始消息
+      message = msg
+        .replace(/译文\s*[:：]\s*.+$/m, '')
+        .replace(/原文\s*[:：]\s*.+$/m, '')
+        .trim();
+      
       match = true;
     } else {
       // 匹配格式1-3: [D/M/YY HH:MM:SS] Sender: Message 或 [DD/MM/YY HH:MM:SS] Sender - Message
@@ -88,6 +101,13 @@ function parseWhatsAppChat(chatText: string): Array<{
       
       if (standardMatch) {
         [, timestamp, sender, message] = standardMatch;
+        // 同样清理发送者名称
+        sender = sender.split('/').pop()?.trim().replace(/^~/, '') || sender.trim().replace(/^~/, '');
+        // 移除译文/原文
+        message = message
+          .replace(/译文\s*[:：]\s*.+$/m, '')
+          .replace(/原文\s*[:：]\s*.+$/m, '')
+          .trim();
         match = true;
       }
     }
