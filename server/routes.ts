@@ -44,6 +44,7 @@ function parseWhatsAppChat(chatText: string): Array<{
   // 格式1: [11/9/25 17:57:02] Bea: Vale, el lunes me pondré en contacto contigo
   // 格式2: [26/10/25 06:41:30] Lisa: 你在干嘛
   // 格式3: [2025-10-26 15:43:16] Sophie Miller: That's sweet
+  // 格式4: [3:06 PM, 11/2/2025] 11/2/AI/美国75/Basil Choulagh: Hi译文 : 你好
   // 注意：日期和月份可能是单个或两个数字
   
   // 统一处理不同的换行符格式和移除零宽字符
@@ -63,18 +64,39 @@ function parseWhatsAppChat(chatText: string): Array<{
       continue;
     }
     
-    // 匹配格式1和2: [D/M/YY HH:MM:SS] Sender: Message 或 [DD/MM/YY HH:MM:SS] Sender - Message
-    // 匹配格式3: [YYYY-MM-DD HH:MM:SS] Sender: Message
-    // 支持单个或双个数字的日期和月份，以及4位年份
-    const match = trimmedLine.match(/^\[(\d{1,2}\/\d{1,2}\/\d{2}\s+\d{2}:\d{2}:\d{2}|\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\]\s+(.+?)(?:\s+-\s+|:\s*)(.*)$/);
+    // 尝试匹配多种格式
+    let match = null;
+    let timestamp = '';
+    let sender = '';
+    let message = '';
+    
+    // 格式4: [3:06 PM, 11/2/2025] Sender: Message（12小时制AM/PM格式）
+    const format4Match = trimmedLine.match(/^\[(\d{1,2}:\d{2}\s+(?:AM|PM|am|pm)),\s+(\d{1,2}\/\d{1,2}\/\d{4})\]\s+(.+?):\s*(.*)$/);
+    
+    if (format4Match) {
+      const [, time, date, senderRaw, msg] = format4Match;
+      timestamp = `${date} ${time}`;
+      // 清理发送者名称：移除可能的前缀（如 "11/2/AI/美国75/"）
+      sender = senderRaw.split('/').pop()?.trim() || senderRaw.trim();
+      // 移除"译文 : xxx"部分，只保留原始消息
+      message = msg.replace(/译文\s*[:：]\s*.+$/, '').trim();
+      match = true;
+    } else {
+      // 匹配格式1-3: [D/M/YY HH:MM:SS] Sender: Message 或 [DD/MM/YY HH:MM:SS] Sender - Message
+      // 匹配格式3: [YYYY-MM-DD HH:MM:SS] Sender: Message
+      const standardMatch = trimmedLine.match(/^\[(\d{1,2}\/\d{1,2}\/\d{2}\s+\d{2}:\d{2}:\d{2}|\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\]\s+(.+?)(?:\s+-\s+|:\s*)(.*)$/);
+      
+      if (standardMatch) {
+        [, timestamp, sender, message] = standardMatch;
+        match = true;
+      }
+    }
     
     if (match) {
       // 如果有当前消息，先保存
       if (currentMessage && currentMessage.message.trim()) {
         conversations.push(currentMessage);
       }
-
-      const [, timestamp, sender, message] = match;
       
       // 过滤系统消息和附件消息（支持简体和繁体中文）
       const systemMessagePatterns = [
