@@ -491,8 +491,22 @@ export class PostgresStorage implements IStorage {
         unreadCount = allMessages.length;
       }
       
+      // 对于私聊，动态显示对方的名字
+      let displayName = chat.name;
+      if (chat.type === 'direct') {
+        // 找到对方用户
+        const otherParticipant = participants.find(p => p.userId !== userId);
+        if (otherParticipant) {
+          const otherUser = await this.getUser(otherParticipant.userId);
+          if (otherUser) {
+            displayName = otherUser.nickname || otherUser.name;
+          }
+        }
+      }
+      
       return {
         ...chat,
+        name: displayName, // 使用动态名称
         participants,
         lastMessage,
         unreadCount
