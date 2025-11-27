@@ -597,13 +597,24 @@ export class PostgresStorage implements IStorage {
   }
   
   // User search methods
-  async searchUsers(keyword: string, limit: number = 20): Promise<User[]> {
+  async searchUsers(keyword: string, limit: number = 50): Promise<User[]> {
+    // 如果关键词为空或只是空格，返回所有用户
+    if (!keyword || keyword.trim() === '') {
+      return await db.select()
+        .from(users)
+        .orderBy(users.nickname)
+        .limit(limit);
+    }
+    
+    // 搜索 name、nickname、username、position、team
     return await db.select()
       .from(users)
       .where(or(
         ilike(users.name, `%${keyword}%`),
         ilike(users.nickname, `%${keyword}%`),
-        ilike(users.username, `%${keyword}%`)
+        ilike(users.username, `%${keyword}%`),
+        ilike(users.position, `%${keyword}%`),
+        ilike(users.team, `%${keyword}%`)
       ))
       .limit(limit);
   }

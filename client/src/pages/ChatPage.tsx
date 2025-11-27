@@ -118,24 +118,20 @@ export default function ChatPage() {
 
   const searchMessages = searchMessagesData?.data || [];
 
-  // 搜索用户（用于创建群聊）
-  const { data: searchUsersData } = useQuery<{ success: boolean; data: SearchUser[] }>({
+  // 搜索用户（用于创建群聊）- 默认显示所有用户，支持搜索筛选
+  const { data: searchUsersData, isLoading: searchUsersLoading } = useQuery<{ success: boolean; data: SearchUser[] }>({
     queryKey: ['/api/search/users', userSearchTerm],
-    queryFn: userSearchTerm
-      ? () => fetch(`/api/search/users?keyword=${encodeURIComponent(userSearchTerm)}`).then(r => r.json())
-      : undefined,
-    enabled: !!userSearchTerm && userSearchTerm.length > 0,
+    queryFn: () => fetch(`/api/search/users?keyword=${encodeURIComponent(userSearchTerm || '')}`).then(r => r.json()),
+    enabled: showUserList || showCreateGroup, // 打开对话框时就加载用户列表
   });
 
   const searchUsers = searchUsersData?.data || [];
 
-  // 搜索用户（用于添加成员）
-  const { data: addMemberSearchData } = useQuery<{ success: boolean; data: SearchUser[] }>({
-    queryKey: ['/api/search/users', addMemberSearchTerm],
-    queryFn: addMemberSearchTerm
-      ? () => fetch(`/api/search/users?keyword=${encodeURIComponent(addMemberSearchTerm)}`).then(r => r.json())
-      : undefined,
-    enabled: !!addMemberSearchTerm && addMemberSearchTerm.length > 0,
+  // 搜索用户（用于添加成员）- 默认显示所有用户，支持搜索筛选
+  const { data: addMemberSearchData, isLoading: addMemberLoading } = useQuery<{ success: boolean; data: SearchUser[] }>({
+    queryKey: ['/api/search/users/add-member', addMemberSearchTerm],
+    queryFn: () => fetch(`/api/search/users?keyword=${encodeURIComponent(addMemberSearchTerm || '')}`).then(r => r.json()),
+    enabled: showAddMember, // 打开添加成员对话框时加载
   });
 
   // 过滤掉已在群聊中的成员
@@ -428,34 +424,47 @@ export default function ChatPage() {
                   </DialogHeader>
                   <div className="space-y-4">
                     <Input
-                      placeholder="搜索用户..."
+                      placeholder="搜索用户（可按昵称、姓名、职位、团队筛选）..."
                       value={userSearchTerm}
                       onChange={(e) => setUserSearchTerm(e.target.value)}
                       data-testid="input-search-users"
                     />
+                    <div className="text-sm text-muted-foreground">
+                      {searchUsersLoading ? '加载中...' : `共 ${searchUsers.length} 位用户`}
+                    </div>
                     <ScrollArea className="h-96">
-                      {searchUsers.map((user) => (
-                        <div
-                          key={user.id}
-                          className="flex items-center justify-between p-2 hover-elevate active-elevate-2 rounded cursor-pointer"
-                          onClick={() => handleStartDirectChat(user.id)}
-                          data-testid={`user-item-${user.id}`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <Avatar className="h-8 w-8">
-                              <AvatarFallback>
-                                {(user.nickname || user.name).charAt(0)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <div className="font-medium">{user.nickname || user.name}</div>
-                              <div className="text-sm text-muted-foreground">
-                                {user.position} {user.team && `· ${user.team}`}
+                      {searchUsersLoading ? (
+                        <div className="flex items-center justify-center h-20 text-muted-foreground">
+                          加载用户列表...
+                        </div>
+                      ) : searchUsers.length === 0 ? (
+                        <div className="flex items-center justify-center h-20 text-muted-foreground">
+                          没有找到用户
+                        </div>
+                      ) : (
+                        searchUsers.map((user) => (
+                          <div
+                            key={user.id}
+                            className="flex items-center justify-between p-2 hover-elevate active-elevate-2 rounded cursor-pointer"
+                            onClick={() => handleStartDirectChat(user.id)}
+                            data-testid={`user-item-${user.id}`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <Avatar className="h-8 w-8">
+                                <AvatarFallback>
+                                  {(user.nickname || user.name).charAt(0)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <div className="font-medium">{user.nickname || user.name}</div>
+                                <div className="text-sm text-muted-foreground">
+                                  {user.position} {user.team && `· ${user.team}`}
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        ))
+                      )}
                     </ScrollArea>
                   </div>
                 </DialogContent>
@@ -482,39 +491,52 @@ export default function ChatPage() {
                       />
                     </div>
                     <div>
-                      <Label>搜索成员</Label>
+                      <Label>搜索成员（可按昵称、姓名、职位、团队筛选）</Label>
                       <Input
-                        placeholder="搜索用户..."
+                        placeholder="输入关键词筛选..."
                         value={userSearchTerm}
                         onChange={(e) => setUserSearchTerm(e.target.value)}
                         data-testid="input-search-members"
                       />
+                      <div className="text-sm text-muted-foreground mt-1">
+                        {searchUsersLoading ? '加载中...' : `共 ${searchUsers.length} 位用户可选`}
+                      </div>
                     </div>
                     <ScrollArea className="h-64">
-                      {searchUsers.map((user) => (
-                        <div
-                          key={user.id}
-                          className="flex items-center gap-2 p-2 hover-elevate rounded"
-                          data-testid={`member-item-${user.id}`}
-                        >
-                          <Checkbox
-                            checked={selectedMembers.includes(user.id)}
-                            onCheckedChange={() => toggleMemberSelection(user.id)}
-                            data-testid={`checkbox-member-${user.id}`}
-                          />
-                          <Avatar className="h-8 w-8">
-                            <AvatarFallback>
-                              {(user.nickname || user.name).charAt(0)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <div className="font-medium">{user.nickname || user.name}</div>
-                            <div className="text-sm text-muted-foreground">
-                              {user.position}
+                      {searchUsersLoading ? (
+                        <div className="flex items-center justify-center h-20 text-muted-foreground">
+                          加载用户列表...
+                        </div>
+                      ) : searchUsers.length === 0 ? (
+                        <div className="flex items-center justify-center h-20 text-muted-foreground">
+                          没有找到用户
+                        </div>
+                      ) : (
+                        searchUsers.map((user) => (
+                          <div
+                            key={user.id}
+                            className="flex items-center gap-2 p-2 hover-elevate rounded"
+                            data-testid={`member-item-${user.id}`}
+                          >
+                            <Checkbox
+                              checked={selectedMembers.includes(user.id)}
+                              onCheckedChange={() => toggleMemberSelection(user.id)}
+                              data-testid={`checkbox-member-${user.id}`}
+                            />
+                            <Avatar className="h-8 w-8">
+                              <AvatarFallback>
+                                {(user.nickname || user.name).charAt(0)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <div className="font-medium">{user.nickname || user.name}</div>
+                              <div className="text-sm text-muted-foreground">
+                                {user.position} {user.team && `· ${user.team}`}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        ))
+                      )}
                     </ScrollArea>
                     <Button
                       onClick={handleCreateGroup}
