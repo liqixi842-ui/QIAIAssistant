@@ -781,16 +781,26 @@ export default function ChatPage() {
                 <div className="space-y-4">
                   {messages.map((msg) => {
                     const isMine = msg.senderId === currentUser?.id;
+                    const isGroupChat = selectedChat?.type === 'group';
                     return (
                       <div
                         key={msg.id}
                         className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}
                         data-testid={`message-${msg.id}`}
                       >
+                        {/* 群聊中非自己的消息显示头像 */}
+                        {!isMine && isGroupChat && (
+                          <Avatar className="h-8 w-8 mr-2 flex-shrink-0">
+                            <AvatarFallback className="text-xs">
+                              {(msg.senderName || '?').charAt(0)}
+                            </AvatarFallback>
+                          </Avatar>
+                        )}
                         <div className={`max-w-[70%] ${isMine ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
+                          {/* 群聊中显示发送者名字，私聊中只显示对方名字 */}
                           {!isMine && (
-                            <span className="text-xs text-muted-foreground px-2">
-                              {msg.senderName}
+                            <span className="text-xs text-muted-foreground px-2 font-medium">
+                              {msg.senderName || '未知用户'}
                             </span>
                           )}
                           <div
